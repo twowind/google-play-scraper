@@ -282,6 +282,15 @@ cluster's first page serves 50 apps and a token, and an English search first
 page served 30 results for "geography quiz" and 20 for "panda", identical
 across four consecutive calls each.
 
+The exact counts `e2e/list.e2e.test.ts` asserts are the one place a fixed
+number still sits against a Google-served set, and they stay because a top
+chart is a ranking window over a huge pool rather than one publisher's shelf.
+Measured at `num` 250 on 2026-09-10, every chart the suite touches filled to
+the 200 item cap: TOP_FREE and TOP_PAID for GAME, TOP_PAID for APPLICATION,
+GROSSING, age filtered FAMILY, and SOCIAL. Only GAME_TRIVIA ran shallower at
+162, and the suite asks it for five. Re-measure with the same probe before
+raising any `num` in that file.
+
 A tripwire failure means Google changed the serving regime, not that the code
 broke. The count assertions in the surrounding suites rely on the premises these
 tests pin, so re-port the affected contract before touching any threshold.
