@@ -1,13 +1,38 @@
 import { expect, it } from 'vitest';
+import { clientFromOptions } from '../src/core/http.js';
+import {
+  fetchDeveloperFirstPage,
+  type DeveloperQuery,
+} from '../src/features/developer/developer.js';
+import { fetchSearchFirstPage, type SearchQuery } from '../src/features/search/search.js';
 import { type DegradationEvent, type IntegrityEvent, type Review } from '../src/index.js';
-import { expectAppItemContract, expectReviewContract, expectReviewsContract } from './contracts.js';
+import {
+  expectAppItemContract,
+  expectContinuationContract,
+  expectReviewContract,
+  expectReviewsContract,
+} from './contracts.js';
 import { liveClient, liveDescribe } from './helpers.js';
 
 const WHATSAPP = 'com.whatsapp';
 const GEO_GAME = 'com.adex77.WhereAmI';
+const GOOGLE_DEV_ID = '5700313618786177705';
+const SEARCH_STREAM_TERM = 'geography quiz';
+const DEVELOPER_QUERY: DeveloperQuery = {
+  devId: GOOGLE_DEV_ID,
+  lang: 'en',
+  country: 'us',
+  throttle: 1,
+};
+const SEARCH_QUERY: SearchQuery = {
+  term: SEARCH_STREAM_TERM,
+  lang: 'en',
+  country: 'us',
+  price: 'all',
+  throttle: 1,
+};
 const FIRST_PAGE_SIZE = 150;
 const STREAM_LIMIT = 200;
-const SEARCH_STREAM_LIMIT = 30;
 const DEVELOPER_STREAM_LIMIT = 40;
 const REVIEWS_ALL_LIMIT = 50;
 const REVIEWS_ALL_CEILING = 5000;
@@ -33,25 +58,33 @@ liveDescribe('iterators live contract', () => {
     expect(events).toEqual([]);
   });
 
-  it('streams thirty search results for a broad term and stops', async () => {
+  it('stops one result short of the search first page', async () => {
+    const { page } = await fetchSearchFirstPage(SEARCH_QUERY, clientFromOptions);
+    expect(
+      page.apps.length,
+      'the search first page must carry more than one result to break inside it',
+    ).toBeGreaterThan(1);
+    const limit = page.apps.length - 1;
+
     const collected: string[] = [];
-    for await (const result of liveClient.searchIterator({ term: 'geography quiz' })) {
+    for await (const result of liveClient.searchIterator({ term: SEARCH_STREAM_TERM })) {
       expectAppItemContract(result, 'streamed search result');
       collected.push(result.appId);
-      if (collected.length === SEARCH_STREAM_LIMIT) {
+      if (collected.length === limit) {
         break;
       }
     }
 
-    expect(collected).toHaveLength(SEARCH_STREAM_LIMIT);
-    expect(new Set(collected).size).toBe(SEARCH_STREAM_LIMIT);
+    expect(collected).toHaveLength(limit);
+    expect(new Set(collected).size).toBe(limit);
   });
 
   it('streams developer apps across the first page boundary', async () => {
+    const { apps, token } = await fetchDeveloperFirstPage(DEVELOPER_QUERY, clientFromOptions);
     const collected: string[] = [];
     const events: DegradationEvent[] = [];
     for await (const item of liveClient.developerIterator({
-      devId: '5700313618786177705',
+      devId: GOOGLE_DEV_ID,
       onDegradation: (event) => events.push(event),
     })) {
       expectAppItemContract(item, 'streamed developer app');
@@ -61,8 +94,13 @@ liveDescribe('iterators live contract', () => {
       }
     }
 
-    expect(collected).toHaveLength(DEVELOPER_STREAM_LIMIT);
-    expect(new Set(collected).size).toBe(DEVELOPER_STREAM_LIMIT);
+    expectContinuationContract(
+      { firstPageCount: apps.length, token },
+      collected.length,
+      DEVELOPER_STREAM_LIMIT,
+      'developer stream',
+    );
+    expect(new Set(collected).size).toBe(collected.length);
     expect(events).toEqual([]);
   });
 
