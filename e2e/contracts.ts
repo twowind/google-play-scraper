@@ -113,6 +113,47 @@ export function expectAppItemsContract(items: readonly AppItem[], label: string)
   ).toBe(items.length);
 }
 
+export interface ContinuationAnchor {
+  firstPageCount: number;
+  token: string | undefined;
+}
+
+export function expectContinuationContract(
+  anchor: ContinuationAnchor,
+  count: number,
+  limit: number,
+  label: string,
+): void {
+  expect(
+    limit,
+    `${label}: the probe must request more than the ${anchor.firstPageCount.toString()} items the first page serves`,
+  ).toBeGreaterThan(anchor.firstPageCount);
+  expect(
+    count,
+    `${label}: a paginated result must never exceed the ${limit.toString()} items requested`,
+  ).toBeLessThanOrEqual(limit);
+  expect(
+    anchor.token,
+    `${label}: the first page carries no continuation token any more, re-anchor the continuation probe`,
+  ).toBeDefined();
+  expect(
+    count,
+    `${label}: a followed continuation must return more than the ${anchor.firstPageCount.toString()} items on the first page`,
+  ).toBeGreaterThan(anchor.firstPageCount);
+}
+
+export function expectSearchListingAgreement(item: AppItem, listing: App, label: string): void {
+  expect(item.appId, `${label}: the search surface must resolve the same appId`).toBe(
+    listing.appId,
+  );
+  expect(item.title, `${label}: the search surface must resolve the same title`).toBe(
+    listing.title,
+  );
+  expect(item.developer, `${label}: the search surface must resolve the same developer`).toBe(
+    listing.developer,
+  );
+}
+
 export function expectReviewContract(review: Review, label: string): void {
   const scoped = `${label} ${review.id}`;
 
