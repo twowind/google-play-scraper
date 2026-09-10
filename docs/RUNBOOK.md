@@ -107,10 +107,10 @@ each one has to be registered in this runbook before it is written:
 
 Outside those two registered exceptions, never assert third-party catalogue
 state. Concretely, do not pin how many apps Google recommends for a listing,
-whether a specific app currently has zero reviews or zero ratings, whether a
-category is currently empty, whether a game is still in preregistration, or
-where an app ranks for a search term. Assert the invariant that holds in either
-state and let the test follow the catalogue.
+how many apps a developer publishes, whether a specific app currently has zero
+reviews or zero ratings, whether a category is currently empty, whether a game
+is still in preregistration, or where an app ranks for a search term. Assert the
+invariant that holds in either state and let the test follow the catalogue.
 
 When a state still deserves live coverage, branch on what the page actually
 reports instead of assuming a state:
@@ -126,6 +126,41 @@ expect(page.data.length).toBeGreaterThan(0);
 Report which branch ran with vitest's `annotate` so a reader of the run can see
 that coverage moved, without the run failing over it.
 
+### Counting rules
+
+Counts are where catalogue state sneaks back in, so they get their own rules.
+Issue #116 came from a suite that demanded a hundred apps from Google's own
+developer page. Measured on 2026-09-10, two consecutive calls returned 94 and
+then 95 apps, with different sets and 84 of 94 positions reordered, so no fixed
+number could ever have been right.
+
+1. A count **ceiling or equality** against third-party catalogue state is never
+   allowed. `num` is a ceiling this library controls, so `length <= num` is an
+   invariant; `length === num` is one only when the same response proves the
+   catalogue reaches that far.
+2. A count **floor** is allowed only as a partial-parse detector, and only when
+   it sits at or below half the measured value, or when a serving regime
+   constant registered below backs it. A floor exists so that a drifted path
+   returning one item fails; it is not a claim about how much Google publishes.
+3. "A continuation was followed" is expressed against the first page of the
+   same surface, never against a constant. Fetch that page with
+   `fetchDeveloperFirstPage`, `fetchSearchFirstPage` or `fetchSimilarFirstPage`,
+   then hand it to `expectContinuationContract`, which requires the aggregate to
+   stay within the requested limit and to exceed the page it continued from.
+   A probe whose first page stops carrying a token fails with a message naming
+   the re-anchor task, because that is a serving regime change and not a parse
+   break.
+
+Two shapes follow from those rules and are worth copying. `num` equal to the
+live first page count must return exactly that page, and `num` one past it must
+return exactly one more item, which pins the slice at the sharpest place there
+is, the cluster boundary. Both derive every number from the same run, so they
+hold whether the catalogue grows or shrinks.
+
+Exact slicing beyond the boundary belongs offline, where it is deterministic:
+`src/features/developer/developer.test.ts` already proves `num` 13 across a
+recorded continuation and `num` 5 when the first page satisfies it.
+
 ### Shared invariants
 
 `e2e/contracts.ts` holds the invariant helpers. Reach for them before writing a
@@ -138,6 +173,10 @@ turns up:
   offer node, rating, histogram, installs, purchase and release state
   invariants.
 - `expectReviewContract` and `expectReviewsContract` for review pages.
+- `expectContinuationContract` for a paginated aggregate measured against the
+  first page it continued from.
+- `expectSearchListingAgreement` for a search item measured against the same
+  app's listing, which catches drift on either surface.
 
 The offer fields deserve their own note, because they are the one place where
 absence carries meaning. `price`, `currency` and `priceText` are three sibling
@@ -228,15 +267,20 @@ Two e2e tests pin the current Google Play serving regime instead of the code:
 - `confirms the numeric first page still requires a continuation` in
   `e2e/developer.e2e.test.ts`
 
-Three measured serving limits back the count assertions that surround them:
-`FIRST_PAGE_SIZE` (150 reviews) in `e2e/iterators.e2e.test.ts`,
-`SIMILAR_CLUSTER_PAGE_SIZE` (50 apps) in `e2e/similar.e2e.test.ts`, and
-`LIST_MAX_ITEMS` (200 apps) in `e2e/list.e2e.test.ts`. The first two exist so
-that a count assertion proves a continuation was followed rather than pinning
-how large a catalogue is. `LIST_MAX_ITEMS` is the hard ceiling `list` returns
-however large `num` gets, measured identical at `num` 200, 250 and 500 on
-2026-08-26, so the assertion is exact and moves only when Google moves the cap.
-Re-measure the page directly before changing one.
+Two measured serving limits back the count assertions that surround them:
+`FIRST_PAGE_SIZE` (150 reviews) in `e2e/iterators.e2e.test.ts` and
+`LIST_MAX_ITEMS` (200 apps) in `e2e/list.e2e.test.ts`. `LIST_MAX_ITEMS` is the
+hard ceiling `list` returns however large `num` gets, measured identical at
+`num` 200, 250 and 500 on 2026-08-26, so the assertion is exact and moves only
+when Google moves the cap. Re-measure the page directly before changing one.
+
+Every other page size the suite needs is read live rather than pinned, because
+a page size that is asserted as a constant fails the day Google resizes a page
+that the parser still reads correctly. Measured on 2026-09-10, for reference
+only: the numeric developer first page serves 10 apps and a token, the similar
+cluster's first page serves 50 apps and a token, and an English search first
+page served 30 results for "geography quiz" and 20 for "panda", identical
+across four consecutive calls each.
 
 A tripwire failure means Google changed the serving regime, not that the code
 broke. The count assertions in the surrounding suites rely on the premises these
