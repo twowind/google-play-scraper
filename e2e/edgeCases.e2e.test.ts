@@ -5,6 +5,7 @@ import {
   expectAppItemsContract,
   expectListingContract,
   expectReviewsContract,
+  expectSearchListingAgreement,
 } from './contracts.js';
 import { liveClient, liveDescribe } from './helpers.js';
 
@@ -406,8 +407,7 @@ liveDescribe('preregistration listings live contract', () => {
       await annotate(`${appId} is not indexed for its own title right now`, 'notice');
       return;
     }
-    expect(match.title).toBe(listing.title);
-    expect(match.developer).toBe(listing.developer);
+    expectSearchListingAgreement(match, listing, 'candidate title search');
     await annotate(`${appId} agrees across the listing and search surfaces`, 'notice');
   });
 });

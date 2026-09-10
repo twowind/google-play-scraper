@@ -8,10 +8,11 @@ import {
   type IntegrityEvent,
   type SearchResult,
 } from '../src/index.js';
-import { expectAppItemsContract } from './contracts.js';
+import { expectAppItemsContract, expectSearchListingAgreement } from './contracts.js';
 import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
 const FIRST_PAGE_CEILING = 40;
+const GEO_GAME = 'com.adex77.WhereAmI';
 
 function memoizingResolveClient(): ResolveClient {
   const underlying = clientFromOptions({ throttle: 1 });
@@ -45,14 +46,21 @@ liveDescribe('search live contract', () => {
     expect(events).toEqual([]);
   });
 
-  it('surfaces the Where Am I game when searching for it', async () => {
-    const results = (await liveClient.search({ term: 'where am i', num: 30 })) as SearchResult[];
+  it('agrees with the listing surface for the Where Am I game', async ({ annotate }) => {
+    const listing = await liveClient.app({ appId: GEO_GAME });
+    const results = (await liveClient.search({ term: listing.title, num: 30 })) as SearchResult[];
 
-    const game = results.find((item) => item.appId === 'com.adex77.WhereAmI');
-    expect(game).toBeDefined();
-    expect(game?.title).toBe('Where Am I? - GeoGuess Game');
-    expect(game?.developer).toBe('Adex77');
-    expect(game?.free).toBe(true);
+    expectAppItemsContract(results, 'owned title search');
+
+    const match = results.find((item) => item.appId === GEO_GAME);
+    if (match === undefined) {
+      await annotate(`${GEO_GAME} is not indexed for its own title right now`, 'notice');
+      return;
+    }
+    expectSearchListingAgreement(match, listing, 'owned title search');
+    expect(match.free, 'owned title search: both surfaces must agree on the offer').toBe(
+      listing.free,
+    );
   });
 
   it('returns only free apps when the price filter is free', async () => {

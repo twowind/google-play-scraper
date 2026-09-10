@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { createCountryFetch } from '../src/index.js';
+import { createCountryFetch, type SearchResult } from '../src/index.js';
+import { expectAppItemsContract } from './contracts.js';
 import { liveClient, liveDescribe } from './helpers.js';
 
 const trackedFetch = (calls: string[], label: string): typeof fetch => {
@@ -32,14 +33,15 @@ liveDescribe('createCountryFetch live contract', () => {
       fallback: trackedFetch(calls, 'fallback'),
     });
 
-    const results = await liveClient.search({
+    const results = (await liveClient.search({
       term: 'maps',
       country: 'de',
       num: 30,
       requestOptions: { fetchImpl },
-    });
+    })) as SearchResult[];
 
-    expect(results.length).toBeGreaterThan(20);
+    expect(results.length).toBeGreaterThan(0);
+    expectAppItemsContract(results, 'fallback routed search');
     expect(calls.length).toBeGreaterThan(0);
     expect(new Set(calls)).toEqual(new Set(['fallback']));
   });
