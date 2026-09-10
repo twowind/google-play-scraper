@@ -75,7 +75,10 @@ liveDescribe('iterators live contract', () => {
       }
     }
 
-    expect(collected).toHaveLength(limit);
+    expect(
+      collected,
+      'the search stream must yield every result up to the caller break',
+    ).toHaveLength(limit);
     expect(new Set(collected).size).toBe(limit);
   });
 
