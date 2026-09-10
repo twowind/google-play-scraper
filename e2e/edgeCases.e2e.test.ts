@@ -390,9 +390,7 @@ liveDescribe('preregistration listings live contract', () => {
     );
   });
 
-  it('resolves a candidate identically on the listing and search surfaces', async ({
-    annotate,
-  }) => {
+  it('resolves a candidate identically on the listing and search surfaces', async (ctx) => {
     const appId = PRIMARY_CANDIDATE;
     const listing = await liveClient.app({ appId });
     const results = (await liveClient.search({
@@ -404,11 +402,11 @@ liveDescribe('preregistration listings live contract', () => {
 
     const match = results.find((item) => item.appId === appId);
     if (match === undefined) {
-      await annotate(`${appId} is not indexed for its own title right now`, 'notice');
+      ctx.skip(`${appId} is not indexed for its own title right now`);
       return;
     }
     expectSearchListingAgreement(match, listing, 'candidate title search');
-    await annotate(`${appId} agrees across the listing and search surfaces`, 'notice');
+    await ctx.annotate(`${appId} agrees across the listing and search surfaces`, 'notice');
   });
 });
 

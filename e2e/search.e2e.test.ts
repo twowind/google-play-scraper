@@ -46,7 +46,7 @@ liveDescribe('search live contract', () => {
     expect(events).toEqual([]);
   });
 
-  it('agrees with the listing surface for the Where Am I game', async ({ annotate }) => {
+  it('agrees with the listing surface for the Where Am I game', async (ctx) => {
     const listing = await liveClient.app({ appId: GEO_GAME });
     const results = (await liveClient.search({ term: listing.title, num: 30 })) as SearchResult[];
 
@@ -54,7 +54,7 @@ liveDescribe('search live contract', () => {
 
     const match = results.find((item) => item.appId === GEO_GAME);
     if (match === undefined) {
-      await annotate(`${GEO_GAME} is not indexed for its own title right now`, 'notice');
+      ctx.skip(`${GEO_GAME} is not indexed for its own title right now`);
       return;
     }
     expectSearchListingAgreement(match, listing, 'owned title search');
