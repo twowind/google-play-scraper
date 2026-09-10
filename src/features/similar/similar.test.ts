@@ -222,4 +222,23 @@ describe('similar fullDetail', () => {
     expect(requested).toEqual(plain.map((item) => item.appId));
     expect(apps.every((item) => item.description.startsWith('detail '))).toBe(true);
   });
+
+  it('returns an empty list without resolving details when there is no cluster', async () => {
+    const { fetchImpl, count } = sequenceFetch([noClusterDetails]);
+    const requested: string[] = [];
+    const detailed = createSimilar((params) => {
+      requested.push(params.appId);
+      return Promise.resolve({ appId: params.appId } as App);
+    });
+
+    const apps = (await detailed({
+      appId: SOURCE_APP_ID,
+      fullDetail: true,
+      requestOptions: { fetchImpl },
+    })) as App[];
+
+    expect(apps).toEqual([]);
+    expect(requested).toEqual([]);
+    expect(count()).toBe(1);
+  });
 });
