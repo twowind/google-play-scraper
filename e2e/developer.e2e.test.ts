@@ -5,7 +5,11 @@ import {
   type DeveloperQuery,
 } from '../src/features/developer/developer.js';
 import { NotFoundError, type DegradationEvent, type DeveloperApp } from '../src/index.js';
-import { expectAppItemsContract, expectContinuationContract } from './contracts.js';
+import {
+  expectAppItemsContract,
+  expectContinuationContract,
+  type ContinuationAnchor,
+} from './contracts.js';
 import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
 const GOOGLE_DEV_ID = '5700313618786177705';
@@ -18,7 +22,7 @@ const GOOGLE_QUERY: DeveloperQuery = {
 const MULTI_PAGE_NUM = 100;
 const CATALOG_PROBE = 500;
 
-async function googleFirstPage(): Promise<{ firstPageCount: number; token: string | undefined }> {
+async function googleFirstPage(): Promise<ContinuationAnchor> {
   const { apps, token } = await fetchDeveloperFirstPage(GOOGLE_QUERY, clientFromOptions);
 
   expect(apps.length, 'the google developer page serves no apps at all').toBeGreaterThan(0);
