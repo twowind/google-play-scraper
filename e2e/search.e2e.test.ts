@@ -13,6 +13,12 @@ import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
 const FIRST_PAGE_CEILING = 40;
 const GEO_GAME = 'com.adex77.WhereAmI';
+const EXACT_MATCH_CARD_CANDIDATES = [
+  'com.spotify.music',
+  'com.whatsapp',
+  'com.duolingo',
+  'com.pandaexpress.app',
+];
 
 function memoizingResolveClient(): ResolveClient {
   const underlying = clientFromOptions({ throttle: 1 });
@@ -151,6 +157,35 @@ liveDescribe('search live contract', () => {
       currency: 0.8,
     });
     expect(events).toEqual([]);
+  });
+
+  it('confirms google still serves an exact match card for a package id search', async ({
+    annotate,
+  }) => {
+    const events: IntegrityEvent[] = [];
+
+    const surfaced: string[] = [];
+    for (const appId of EXACT_MATCH_CARD_CANDIDATES) {
+      const results = (await liveClient.search({
+        term: appId,
+        num: 5,
+        onIntegrityEvent: (event) => events.push(event),
+      })) as SearchResult[];
+
+      expectAppItemsContract(results, 'exact match search');
+      if (results[0]?.appId === appId && results[0].developerId !== undefined) {
+        surfaced.push(appId);
+      }
+    }
+
+    expect(events).toEqual([]);
+    expect(
+      surfaced.length,
+      'no exact match card anchor still surfaces a card: repair the card paths in src/features/search/specs.ts, or re-anchor the pool if google stopped serving cards for these package ids',
+    ).toBeGreaterThan(0);
+    await annotate(
+      `${surfaced.length.toString()} of ${EXACT_MATCH_CARD_CANDIDATES.length.toString()} anchors surfaced a card: ${surfaced.join(', ')}`,
+    );
   });
 
   it('confirms google still serves no search continuation token', async () => {
