@@ -2,7 +2,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createSearch, search, type SearchOptions } from './search.js';
-import { filterByPrice, matchesPriceFilter, SEARCH_RPC_ID } from './specs.js';
+import {
+  filterByPrice,
+  isExactMatchCard,
+  matchesPriceFilter,
+  SEARCH_RPC_ID,
+  searchScriptDataSelection,
+} from './specs.js';
+import { getPath } from '../../core/path.js';
+import { parseScriptData } from '../../core/scriptData.js';
+import { deletePath, replaceScriptBlockData } from '../../../test/helpers/responseMutation.js';
 import { searchResultSchema, type SearchResult } from './schema.js';
 import type { App } from '../app/schema.js';
 import type { DegradationEvent } from '../../core/degradation.js';
@@ -17,6 +26,7 @@ const readFixture = (name: string): string =>
 
 const pandaHtml = readFixture('panda.html');
 const whereAmIHtml = readFixture('where-am-i.html');
+const biedronkaHtml = readFixture('biedronka-pl.html');
 
 const fetchReturning = (body: string, status = 200): typeof fetch => {
   const impl: typeof fetch = () => Promise.resolve(new Response(body, { status }));
@@ -197,7 +207,7 @@ describe('search pagination', () => {
   });
 });
 
-const exactMatchNode = (id: string): unknown[] => {
+const exactMatchDetail = (id: string): unknown[] => {
   const detail: unknown[] = [];
   detail[0] = [`App ${id}`];
   detail[68] = [
@@ -206,20 +216,68 @@ const exactMatchNode = (id: string): unknown[] => {
   ];
   detail[73] = [[null, `Summary of ${id}`]];
   detail[95] = [[null, null, null, [null, null, `https://icon.example/${id}`]]];
+  return detail;
+};
+
+const offerContainer = (id: string): unknown[] => [
+  [null, null, null, null, [null, null, `/store/apps/details?id=${id}`]],
+];
+
+const primaryOfferNode = (id: string): unknown[] => [offerContainer(id)];
+
+const primaryOfferNodeWithPrice = (id: string, micros: number, currency: string): unknown[] => {
+  const container = offerContainer(id);
+  container[2] = [[null, [[micros, currency, '']]]];
+  return [container];
+};
+
+const detailOfferNode = (micros: number, currency: string): unknown => [
+  [[[[null, [[micros, currency, '']]]]]],
+];
+
+const detailUrlNode = (id: string): unknown => [
+  [null, null, `https://play.google.com/store/apps/details?id=${id}`],
+];
+
+const detailWithOffer = (id: string, micros: number, currency: string): unknown[] => {
+  const detail = exactMatchDetail(id);
+  detail[41] = detailUrlNode(id);
+  detail[57] = detailOfferNode(micros, currency);
+  return detail;
+};
+
+const exactMatchCard = (id: string, detail: unknown[], offer?: unknown): unknown[] => {
   const node16: unknown[] = [];
   node16[2] = detail;
   node16[3] = { '12': [[id]] };
-  const node17: unknown[] = [
-    [[null, null, null, null, [null, null, `/store/apps/details?id=${id}`]]],
-  ];
-  const root: unknown[] = [];
-  root[16] = node16;
-  root[17] = node17;
-  return root;
+  const card: unknown[] = [];
+  card[16] = node16;
+  if (offer !== undefined) {
+    card[17] = offer;
+  }
+  return card;
 };
 
-const searchPageWithSection = (section: unknown[]): string =>
-  `${buildScriptData('ds:4', [[null, [section]]])}${buildServiceTable({ 'ds:4': SEARCH_RPC_ID })}`;
+const exactMatchNode = (id: string): unknown[] =>
+  exactMatchCard(id, exactMatchDetail(id), primaryOfferNode(id));
+
+const searchPageWithSections = (sections: readonly unknown[]): string =>
+  `${buildScriptData('ds:4', [[null, sections]])}${buildServiceTable({ 'ds:4': SEARCH_RPC_ID })}`;
+
+const searchPageWithSection = (section: unknown[]): string => searchPageWithSections([section]);
+
+const cardSection = (card: unknown, index = 23): unknown[] => {
+  const section: unknown[] = [];
+  section[index] = card;
+  return section;
+};
+
+const searchOn = async (html: string, events: IntegrityEvent[] = []): Promise<SearchResult[]> =>
+  search({
+    term: 'panda',
+    onIntegrityEvent: (event) => events.push(event),
+    requestOptions: { fetchImpl: fetchReturning(html) },
+  });
 
 const sectionWithApps = (ids: string[]): unknown[] => {
   const section: unknown[] = [];
@@ -523,5 +581,428 @@ describe('search fullDetail', () => {
     expect(requested).toEqual(plain.map((item) => item.appId));
     expect(detailed).toHaveLength(3);
     expect(detailed.every((item) => item.description.startsWith('detail '))).toBe(true);
+  });
+});
+
+describe('search exact match resolution', () => {
+  it('prepends a card anchored in the first section', async () => {
+    const html = searchPageWithSections([cardSection(exactMatchNode('x')), sectionWithApps(['a'])]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toEqual([]);
+  });
+
+  it('prepends a card anchored in a later section', async () => {
+    const html = searchPageWithSections([
+      [],
+      cardSection(exactMatchNode('x')),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toEqual([]);
+  });
+
+  it('prepends a card anchored in the same section as the results', async () => {
+    const section = sectionWithApps(['a']);
+    section[23] = exactMatchNode('x');
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(searchPageWithSection(section), events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toEqual([]);
+  });
+
+  it('resolves a card that moved off its anchor index and reports the fallback', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchNode('x'), 24),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('section-anchor-fallback');
+    expect(events[0]?.context).toBe('search');
+    expect(events[0]?.error).toBeInstanceOf(ParseError);
+    expect(events[0]?.error.message).toContain('sections.0.24');
+  });
+
+  it('prefers an anchored card over a card reachable only by scanning', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchNode('x')),
+      cardSection(exactMatchNode('y'), 24),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toEqual([]);
+  });
+
+  it('prefers a later anchored card over an earlier unusable anchor', async () => {
+    const html = searchPageWithSections([
+      cardSection(['garbage']),
+      cardSection(exactMatchNode('x')),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toEqual([]);
+  });
+
+  it('scans past an unusable anchor when the card moved off its index', async () => {
+    const html = searchPageWithSections([
+      cardSection(['garbage']),
+      cardSection(exactMatchNode('x'), 24),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('section-anchor-fallback');
+    expect(events[0]?.error.message).toContain('sections.1.24');
+  });
+
+  it('reports the unusable anchor when no card can be resolved anywhere', async () => {
+    const html = searchPageWithSections([cardSection(['garbage']), sectionWithApps(['a', 'b'])]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a', 'b']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('optional-section-parse');
+  });
+
+  it('skips a non array section while scanning', async () => {
+    const html = searchPageWithSections([
+      'not-a-section',
+      cardSection(exactMatchNode('x'), 24),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('section-anchor-fallback');
+  });
+
+  it('never mistakes an ordinary result row for a card', async () => {
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(searchPageWithSection(sectionWithApps(['a', 'b'])), events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a', 'b']);
+    expect(events).toEqual([]);
+  });
+
+  it('does not duplicate a scanned card already present in the results', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchNode('a'), 24),
+      sectionWithApps(['a', 'b']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a', 'b']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('section-anchor-fallback');
+  });
+
+  it('returns the card alone when the page carries no result list', async () => {
+    const emptySection: unknown[] = [];
+    emptySection[22] = [[]];
+    const html = searchPageWithSections([cardSection(exactMatchNode('x')), emptySection]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x']);
+    expect(events).toEqual([]);
+  });
+
+  it('returns the card alone when it moved off its anchor and no list exists', async () => {
+    const html = searchPageWithSections([cardSection(exactMatchNode('x'), 24)]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('section-anchor-fallback');
+  });
+
+  it('resolves a moved card when no integrity observer is configured', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchNode('x'), 24),
+      sectionWithApps(['a']),
+    ]);
+
+    const results = (await search({
+      term: 'panda',
+      requestOptions: { fetchImpl: fetchReturning(html) },
+    })) as SearchResult[];
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+  });
+});
+
+describe('search exact match offer fallbacks', () => {
+  it('reads url, price and currency from the detail offer node', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchCard('x', detailWithOffer('x', 0, 'EUR'))),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results[0]?.appId).toBe('x');
+    expect(results[0]?.url).toBe('https://play.google.com/store/apps/details?id=x');
+    expect(results[0]?.currency).toBe('EUR');
+    expect(results[0]?.price).toBe(0);
+    expect(results[0]?.free).toBe(true);
+    expect(events).toEqual([]);
+  });
+
+  it('derives a paid card from the detail offer node', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchCard('x', detailWithOffer('x', 4_990_000, 'PLN'))),
+      sectionWithApps(['a']),
+    ]);
+
+    const results = await searchOn(html);
+
+    expect(results[0]?.price).toBe(4.99);
+    expect(results[0]?.free).toBe(false);
+    expect(results[0]?.currency).toBe('PLN');
+  });
+
+  it('prefers the primary offer node over the detail offer node', async () => {
+    const detail = detailWithOffer('detail', 9_990_000, 'EUR');
+    const card = exactMatchCard('x', detail, primaryOfferNodeWithPrice('x', 0, 'USD'));
+    const html = searchPageWithSections([cardSection(card), sectionWithApps(['a'])]);
+
+    const results = await searchOn(html);
+
+    expect(results[0]?.url).toBe('https://play.google.com/store/apps/details?id=x');
+    expect(results[0]?.currency).toBe('USD');
+    expect(results[0]?.price).toBe(0);
+    expect(results[0]?.free).toBe(true);
+  });
+
+  it('drops the card and reports it when no url node resolves', async () => {
+    const card = exactMatchCard('x', exactMatchDetail('x'));
+    const html = searchPageWithSections([cardSection(card), sectionWithApps(['a'])]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('optional-section-parse');
+    expect(events[0]?.error.message).toContain('url');
+  });
+});
+
+describe('search exact match anchor selection', () => {
+  it('prefers a later anchored card over an earlier card that cannot be extracted', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchCard('decoy', [])),
+      cardSection(exactMatchNode('x')),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toEqual([]);
+  });
+
+  it('prefers a later anchored card over an earlier card reachable only by scanning', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchNode('y'), 24),
+      cardSection(exactMatchNode('x')),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toEqual([]);
+  });
+
+  it('ignores a non card node parked at a later section anchor', async () => {
+    const html = searchPageWithSections([sectionWithApps(['a']), [], cardSection(['noise'])]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a']);
+    expect(events).toEqual([]);
+  });
+
+  it('treats a null anchor as an absent card', async () => {
+    const html = searchPageWithSections([cardSection(null), sectionWithApps(['a'])]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a']);
+    expect(events).toEqual([]);
+  });
+
+  it('reports the first section anchor once when several anchors are unusable', async () => {
+    const html = searchPageWithSections([
+      cardSection(['garbage']),
+      sectionWithApps(['a']),
+      cardSection(['more-garbage']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('optional-section-parse');
+  });
+
+  it('keeps scanning past a card that cannot be extracted', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchCard('broken', []), 24),
+      cardSection(exactMatchNode('x'), 25),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('section-anchor-fallback');
+    expect(events[0]?.error.message).toContain('sections.1.25');
+  });
+
+  it('reports the scanned card rather than an unrelated node at the first anchor', async () => {
+    const html = searchPageWithSections([
+      cardSection(['noise']),
+      cardSection(exactMatchCard('broken', []), 24),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('optional-section-parse');
+    expect(events[0]?.error.message).not.toContain('appId');
+  });
+
+  it('reports an unextractable card found only by scanning', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchCard('x', []), 24),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('optional-section-parse');
+  });
+});
+
+describe('search exact match offer mirror against the recorded card', () => {
+  const pandaWithoutOfferNode = (): string => {
+    const root = parseScriptData(pandaHtml, searchScriptDataSelection).blocks['ds:4'];
+    return replaceScriptBlockData(pandaHtml, 'ds:4', deletePath(root, [0, 1, 0, 23, 17]));
+  };
+
+  it('resolves url, price, currency and free from the detail node of the real card', async () => {
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(pandaWithoutOfferNode(), events);
+
+    expect(results[0]?.appId).toBe('com.pandaexpress.app');
+    expect(results[0]?.url).toBe(
+      'https://play.google.com/store/apps/details?id=com.pandaexpress.app',
+    );
+    expect(results[0]?.price).toBe(0);
+    expect(results[0]?.currency).toBe('USD');
+    expect(results[0]?.free).toBe(true);
+    expect(events).toEqual([]);
+  });
+
+  it('agrees with the primary offer node the recorded card still carries', async () => {
+    const withMirror = await searchOn(pandaWithoutOfferNode());
+    const withPrimary = await searchOn(pandaHtml);
+
+    expect(withMirror[0]?.url).toBe(withPrimary[0]?.url);
+    expect(withMirror[0]?.price).toBe(withPrimary[0]?.price);
+    expect(withMirror[0]?.currency).toBe(withPrimary[0]?.currency);
+    expect(withMirror[0]?.free).toBe(withPrimary[0]?.free);
+  });
+
+  it('reads each offer field from its own node when the two are mixed', async () => {
+    const detail = detailWithOffer('x', 4_990_000, 'PLN');
+    const card = exactMatchCard('x', detail, primaryOfferNode('x'));
+    const html = searchPageWithSections([cardSection(card), sectionWithApps(['a'])]);
+
+    const results = await searchOn(html);
+
+    expect(results[0]?.url).toBe('https://play.google.com/store/apps/details?id=x');
+    expect(results[0]?.price).toBe(4.99);
+    expect(results[0]?.currency).toBe('PLN');
+    expect(results[0]?.free).toBe(false);
+  });
+});
+
+describe('search exact match on a recorded multi section page', () => {
+  const biedronkaSections = (): unknown =>
+    getPath(parseScriptData(biedronkaHtml, searchScriptDataSelection).blocks['ds:4'], [0, 1]);
+
+  it('still records a page whose card sits outside the first section', () => {
+    const sections = biedronkaSections();
+
+    expect(
+      isExactMatchCard(getPath(sections, [0, 23])),
+      're-record search/biedronka-pl.html from a query that still serves a card outside the first section',
+    ).toBe(false);
+    expect(isExactMatchCard(getPath(sections, [1, 23]))).toBe(true);
+  });
+
+  it('returns the card google renders above the result list', async () => {
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(biedronkaHtml, events);
+
+    expect(results[0]?.appId).toBe('pl.jmpolska.clos0.mojabiedronka');
+    expect(results[0]?.developerId).toBeDefined();
+    expect(events).toEqual([]);
   });
 });

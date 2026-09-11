@@ -1,5 +1,5 @@
 import { isFreeMicros, microsToUnits, resolveAppUrl } from '../../core/appItemTransforms.js';
-import type { Path } from '../../core/path.js';
+import { getPath, type Path } from '../../core/path.js';
 import { rawArrayPathSchema } from '../../core/raw.js';
 import type { ScriptRootSpec } from '../../core/scriptRoot.js';
 import { deriveScriptDataSelection } from '../../core/scriptData.js';
@@ -21,9 +21,17 @@ function developerIdFromLink(value: unknown): string | undefined {
 }
 
 export const INITIAL_MAPPINGS = {
-  app: [0, 1, 0, 23],
   sections: [0, 1],
 } satisfies Record<string, Path>;
+
+export const EXACT_MATCH_MAPPINGS = {
+  card: [23],
+  appId: [16, 3, '12', 0, 0],
+} satisfies Record<string, Path>;
+
+export function isExactMatchCard(value: unknown): boolean {
+  return typeof getPath(value, EXACT_MATCH_MAPPINGS.appId) === 'string';
+}
 
 export const searchRootSpec = {
   rpcId: SEARCH_RPC_ID,
@@ -92,11 +100,23 @@ export const searchPageItemSpecs = {
   score: { paths: [[4, 1]], missing: OPTIONAL, schema: shape.score },
 } satisfies SpecMap;
 
+const EXACT_MATCH_OFFER_NODE = {
+  url: [17, 0, 0, 4, 2],
+  price: [17, 0, 2, 0, 1, 0, 0],
+  currency: [17, 0, 2, 0, 1, 0, 1],
+} satisfies Record<string, Path>;
+
+const EXACT_MATCH_DETAIL_NODE = {
+  url: [16, 2, 41, 0, 2],
+  price: [16, 2, 57, 0, 0, 0, 0, 1, 0, 0],
+  currency: [16, 2, 57, 0, 0, 0, 0, 1, 0, 1],
+} satisfies Record<string, Path>;
+
 export const exactMatchSpecs = {
   title: { paths: [[16, 2, 0, 0]], missing: REQUIRED, schema: shape.title },
-  appId: { paths: [[16, 3, '12', 0, 0]], missing: REQUIRED, schema: shape.appId },
+  appId: { paths: [EXACT_MATCH_MAPPINGS.appId], missing: REQUIRED, schema: shape.appId },
   url: {
-    paths: [[17, 0, 0, 4, 2]],
+    paths: [EXACT_MATCH_OFFER_NODE.url, EXACT_MATCH_DETAIL_NODE.url],
     missing: REQUIRED,
     schema: shape.url,
     transform: resolveAppUrl,
@@ -109,15 +129,19 @@ export const exactMatchSpecs = {
     schema: shape.developerId,
     transform: developerIdFromLink,
   },
-  currency: { paths: [[17, 0, 2, 0, 1, 0, 1]], missing: OPTIONAL, schema: shape.currency },
+  currency: {
+    paths: [EXACT_MATCH_OFFER_NODE.currency, EXACT_MATCH_DETAIL_NODE.currency],
+    missing: OPTIONAL,
+    schema: shape.currency,
+  },
   price: {
-    paths: [[17, 0, 2, 0, 1, 0, 0]],
+    paths: [EXACT_MATCH_OFFER_NODE.price, EXACT_MATCH_DETAIL_NODE.price],
     missing: DEFAULT_PRICE,
     schema: shape.price,
     transform: microsToUnits,
   },
   free: {
-    paths: [[17, 0, 2, 0, 1, 0, 0]],
+    paths: [EXACT_MATCH_OFFER_NODE.price, EXACT_MATCH_DETAIL_NODE.price],
     missing: DEFAULT_NOT_FREE,
     schema: shape.free,
     transform: isFreeMicros,

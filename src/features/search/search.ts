@@ -15,9 +15,11 @@ import type { App } from '../app/schema.js';
 import { searchResultSchema, type SearchResult } from './schema.js';
 import {
   CLUSTER_MAPPINGS,
+  EXACT_MATCH_MAPPINGS,
   exactMatchSpecs,
   filterByPrice,
   INITIAL_MAPPINGS,
+  isExactMatchCard,
   priceGoogleValue,
   searchItemSpecs,
   searchPageItemSpecs,
@@ -76,20 +78,86 @@ export async function fetchSearchFirstPage(
   return { client, page: firstPage(root.root, query.onIntegrityEvent) };
 }
 
+interface ScannedCard {
+  card: unknown;
+  entryIndex: number;
+  sectionIndex: number;
+}
+
+function* scanForExactMatchCards(sections: readonly unknown[]): Generator<ScannedCard> {
+  for (const [sectionIndex, section] of sections.entries()) {
+    if (!Array.isArray(section)) {
+      continue;
+    }
+    for (const [entryIndex, entry] of section.entries()) {
+      if (isExactMatchCard(entry)) {
+        yield { card: entry, entryIndex, sectionIndex };
+      }
+    }
+  }
+}
+
+function extractExactMatch(
+  card: unknown,
+  onIntegrityEvent?: OnIntegrityEvent,
+): SearchItem | undefined {
+  return parseOptionalSection(
+    SEARCH_CONTEXT,
+    () => extract(card, exactMatchSpecs, SEARCH_CONTEXT),
+    onIntegrityEvent,
+  );
+}
+
+function reportUnusableCard(
+  card: unknown,
+  onIntegrityEvent?: OnIntegrityEvent,
+): SearchItem | undefined {
+  if (card === undefined || card === null) {
+    return undefined;
+  }
+  return extractExactMatch(card, onIntegrityEvent);
+}
+
+function resolveExactMatch(
+  sections: readonly unknown[],
+  onIntegrityEvent?: OnIntegrityEvent,
+): SearchItem | undefined {
+  for (const section of sections) {
+    const candidate = getPath(section, EXACT_MATCH_MAPPINGS.card);
+    if (!isExactMatchCard(candidate)) {
+      continue;
+    }
+    const anchoredMatch = extractExactMatch(candidate);
+    if (anchoredMatch !== undefined) {
+      return anchoredMatch;
+    }
+  }
+
+  let unusableCard: unknown;
+  for (const scanned of scanForExactMatchCards(sections)) {
+    const scannedMatch = extractExactMatch(scanned.card);
+    if (scannedMatch !== undefined) {
+      const error = new ParseError(
+        `${SEARCH_CONTEXT}: exact match card resolved at sections.${scanned.sectionIndex.toString()}.${scanned.entryIndex.toString()} instead of its anchor`,
+      );
+      onIntegrityEvent?.({ context: SEARCH_CONTEXT, reason: 'section-anchor-fallback', error });
+      return scannedMatch;
+    }
+    unusableCard ??= scanned.card;
+  }
+
+  return reportUnusableCard(
+    unusableCard ?? getPath(sections[0], EXACT_MATCH_MAPPINGS.card),
+    onIntegrityEvent,
+  );
+}
+
 function prependExactMatch(
-  root: unknown,
+  sections: readonly unknown[],
   apps: SearchItem[],
   onIntegrityEvent?: OnIntegrityEvent,
 ): SearchItem[] {
-  const exactMatchData = getPath(root, INITIAL_MAPPINGS.app);
-  if (exactMatchData === undefined || exactMatchData === null) {
-    return apps;
-  }
-  const exactMatch = parseOptionalSection(
-    SEARCH_CONTEXT,
-    () => extract(exactMatchData, exactMatchSpecs, SEARCH_CONTEXT),
-    onIntegrityEvent,
-  );
+  const exactMatch = resolveExactMatch(sections, onIntegrityEvent);
   if (exactMatch === undefined) {
     return apps;
   }
@@ -110,12 +178,12 @@ function firstPage(root: unknown, onIntegrityEvent?: OnIntegrityEvent): FirstPag
       const extracted = apps.map((item) => extract(item, searchItemSpecs, SEARCH_CONTEXT));
       const token = getPath(section, SECTIONS_MAPPING.token);
       return {
-        apps: prependExactMatch(root, extracted, onIntegrityEvent),
+        apps: prependExactMatch(sections, extracted, onIntegrityEvent),
         token: typeof token === 'string' ? token : undefined,
       };
     }
   }
-  return { apps: [], token: undefined };
+  return { apps: prependExactMatch(sections, [], onIntegrityEvent), token: undefined };
 }
 
 export function createSearch(

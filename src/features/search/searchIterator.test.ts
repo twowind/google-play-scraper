@@ -59,6 +59,24 @@ const searchPageHtml = (ids: string[], token: string, exactMatchId?: string): st
   return buildScriptData('ds:4', [[null, [section]]]);
 };
 
+const searchPageWithSections = (sections: readonly unknown[]): string =>
+  buildScriptData('ds:4', [[null, sections]]);
+
+const appsSection = (ids: string[], token?: string): unknown[] => {
+  const section: unknown[] = [];
+  section[22] =
+    token === undefined
+      ? [ids.map((id) => [coreData(id)])]
+      : [ids.map((id) => [coreData(id)]), [null, null, null, [null, token]]];
+  return section;
+};
+
+const exactMatchSection = (id: string, index = 23): unknown[] => {
+  const section: unknown[] = [];
+  section[index] = exactMatchNode(id);
+  return section;
+};
+
 const clusterBatch = (
   entries: { id: string; priceMicros?: number }[],
   nextToken: string | null,
@@ -137,6 +155,24 @@ describe('searchIterator streaming', () => {
 
     expect(ids).toEqual(['exact', 'a', 'b', 'c']);
     expect(ids.filter((id) => id === 'exact')).toHaveLength(1);
+  });
+
+  it('surfaces a card anchored in a section after the result list', async () => {
+    const { fetchImpl } = sequenceFetch([
+      searchPageWithSections([appsSection(['a', 'b']), exactMatchSection('exact')]),
+    ]);
+
+    const ids = await collect(searchIterator({ term: 'panda', requestOptions: { fetchImpl } }));
+
+    expect(ids).toEqual(['exact', 'a', 'b']);
+  });
+
+  it('streams the card alone when the page carries no result list', async () => {
+    const { fetchImpl } = sequenceFetch([searchPageWithSections([exactMatchSection('exact', 24)])]);
+
+    const ids = await collect(searchIterator({ term: 'panda', requestOptions: { fetchImpl } }));
+
+    expect(ids).toEqual(['exact']);
   });
 });
 

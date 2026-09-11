@@ -978,12 +978,13 @@ const details = await app({
 });
 ```
 
-| Callback           | Reason                   | Meaning                                                                |
-| ------------------ | ------------------------ | ---------------------------------------------------------------------- |
-| `onDegradation`    | `cluster-page-parse`     | A cluster continuation failed to parse and collected results returned. |
-| `onIntegrityEvent` | `rpc-anchor-fallback`    | An RPC anchor used its validated absolute fallback.                    |
-| `onIntegrityEvent` | `optional-section-parse` | A present best-effort section failed to parse and was skipped.         |
-| `onIntegrityEvent` | `pagination-token-cycle` | A repeated token stopped pagination before a duplicate request.        |
+| Callback           | Reason                    | Meaning                                                                |
+| ------------------ | ------------------------- | ---------------------------------------------------------------------- |
+| `onDegradation`    | `cluster-page-parse`      | A cluster continuation failed to parse and collected results returned. |
+| `onIntegrityEvent` | `rpc-anchor-fallback`     | An RPC anchor used its validated absolute fallback.                    |
+| `onIntegrityEvent` | `optional-section-parse`  | A present best-effort section failed to parse and was skipped.         |
+| `onIntegrityEvent` | `pagination-token-cycle`  | A repeated token stopped pagination before a duplicate request.        |
+| `onIntegrityEvent` | `section-anchor-fallback` | A best-effort section resolved outside its declared anchor.            |
 
 Two boundaries to know:
 
@@ -997,7 +998,7 @@ With `memoized()`, `onDegradation`, `onIntegrityEvent`, and the lifecycle hooks 
 
 This package follows [Semantic Versioning](https://semver.org). For a scraper the contract needs one clarification: semver covers the code surface this library controls, not the data Google serves.
 
-Integrity diagnostics use the additive API choice (Option B): the existing `DegradationEvent.reason` remains exactly `'cluster-page-parse'`, and the three new reasons live on the opt-in `onIntegrityEvent` callback. This preserves exhaustive switches and narrowly typed `onDegradation` handlers while adding observability without a major release.
+Integrity diagnostics use the additive API choice (Option B): the existing `DegradationEvent.reason` remains exactly `'cluster-page-parse'`, and the four new reasons live on the opt-in `onIntegrityEvent` callback. This keeps exhaustive switches over `DegradationEvent.reason` and narrowly typed `onDegradation` handlers intact while adding observability without a major release. `IntegrityReason` itself is a widening union, so a new reason is a minor release and an exhaustive switch over it needs a new arm.
 
 | Change                                                            | Release |
 | ----------------------------------------------------------------- | ------- |
@@ -1005,6 +1006,7 @@ Integrity diagnostics use the additive API choice (Option B): the existing `Degr
 | Removing a field from a result schema, or changing its type       | major   |
 | Raising the Node.js support floor or dropping a module format     | major   |
 | Adding a new method, option, or optional result field             | minor   |
+| Adding a reason to `IntegrityReason`                              | minor   |
 | Restoring extraction of a field after a Google Play layout change | patch   |
 
 What semver cannot cover is the content behind those shapes. Google Play changes its markup a few times a year, and a field can start coming back `undefined`, empty, or degraded without any release of this package. The policy for that case:
