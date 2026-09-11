@@ -173,12 +173,16 @@ liveDescribe('search live contract', () => {
       })) as SearchResult[];
 
       expectAppItemsContract(results, 'exact match search');
-      if (results[0]?.appId === appId && results[0].developerId !== undefined) {
+      const first = results[0];
+      if (first?.appId === appId && first.developerId !== undefined) {
         surfaced.push(appId);
       }
     }
 
-    expect(events).toEqual([]);
+    expect(
+      events.map((event) => event.reason),
+      'exact match card drift: section-anchor-fallback means re-pin EXACT_MATCH_MAPPINGS.card in src/features/search/specs.ts, optional-section-parse means a required card field moved',
+    ).toEqual([]);
     expect(
       surfaced.length,
       'no exact match card anchor still surfaces a card: repair the card paths in src/features/search/specs.ts, or re-anchor the pool if google stopped serving cards for these package ids',

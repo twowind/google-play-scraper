@@ -71,8 +71,11 @@ The other integrity reasons have narrower responses:
   anchor. The event message names the section and index where it was found.
   Refresh the search fixture, move `EXACT_MATCH_MAPPINGS.card` to the reported
   index, and confirm the event stops. The public result is already correct, so
-  this is a scheduled repair rather than an outage, but leaving it unrepaired
-  means the next drift has no anchor left to fall back from.
+  this is a scheduled repair rather than an outage for consumers, but leaving it
+  unrepaired means the next drift has no anchor left to fall back from. The
+  exact match tripwire below therefore fails the live run on it, the same way
+  the suite already fails on `rpc-anchor-fallback`, so that the repair is
+  actually scheduled rather than accumulated.
 
 ## Live contract assertion rules
 
