@@ -16,6 +16,13 @@ This runbook turns that break into a fifteen minute patch.
    with `pnpm fixtures:update <feature>` (for example `pnpm fixtures:update app`)
    to skip re-recording unaffected suites.
 
+   `search/biedronka-pl.html` is recorded from the `pl` storefront on purpose: it
+   is the only fixture whose exact match card sits outside the first section, so
+   it is the offline reproduction of issue #113. A refresh that flattens it fails
+   the shape gate in `src/features/search/search.test.ts` with a message naming
+   the re-record task. Re-record it from a query that still serves a card outside
+   the first section rather than deleting the gate.
+
 3. **Repair the paths.** Open the matching `src/features/<name>/specs.ts`, inspect
    the refreshed fixture (search the expected value in the raw HTML or batch
    payload to find its new indexes), and update only the paths. Prefer appending
