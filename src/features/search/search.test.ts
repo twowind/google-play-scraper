@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { createSearch, search, type SearchOptions } from './search.js';
 import {
   filterByPrice,
+  isExactMatchCard,
   matchesPriceFilter,
   SEARCH_RPC_ID,
   searchScriptDataSelection,
 } from './specs.js';
+import { getPath } from '../../core/path.js';
 import { parseScriptData } from '../../core/scriptData.js';
 import { deletePath, replaceScriptBlockData } from '../../../test/helpers/responseMutation.js';
 import { searchResultSchema, type SearchResult } from './schema.js';
@@ -24,6 +26,7 @@ const readFixture = (name: string): string =>
 
 const pandaHtml = readFixture('panda.html');
 const whereAmIHtml = readFixture('where-am-i.html');
+const biedronkaHtml = readFixture('biedronka-pl.html');
 
 const fetchReturning = (body: string, status = 200): typeof fetch => {
   const impl: typeof fetch = () => Promise.resolve(new Response(body, { status }));
@@ -944,5 +947,30 @@ describe('search exact match offer mirror against the recorded card', () => {
     expect(results[0]?.price).toBe(4.99);
     expect(results[0]?.currency).toBe('PLN');
     expect(results[0]?.free).toBe(false);
+  });
+});
+
+describe('search exact match on a recorded multi section page', () => {
+  const biedronkaSections = (): unknown =>
+    getPath(parseScriptData(biedronkaHtml, searchScriptDataSelection).blocks['ds:4'], [0, 1]);
+
+  it('still records a page whose card sits outside the first section', () => {
+    const sections = biedronkaSections();
+
+    expect(
+      isExactMatchCard(getPath(sections, [0, 23])),
+      're-record search/biedronka-pl.html from a query that still serves a card outside the first section',
+    ).toBe(false);
+    expect(isExactMatchCard(getPath(sections, [1, 23]))).toBe(true);
+  });
+
+  it('returns the card google renders above the result list', async () => {
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(biedronkaHtml, events);
+
+    expect(results[0]?.appId).toBe('pl.jmpolska.clos0.mojabiedronka');
+    expect(results[0]?.developerId).toBeDefined();
+    expect(events).toEqual([]);
   });
 });

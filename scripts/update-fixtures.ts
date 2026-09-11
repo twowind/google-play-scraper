@@ -54,16 +54,33 @@ function appPageRecorder(appId: string, file: string): Recorder {
   };
 }
 
-function searchUrl(term: string): string {
-  const params = new URLSearchParams({ c: 'apps', q: term, hl: 'en', gl: 'us', price: '0' });
+interface Storefront {
+  country: string;
+  lang: string;
+}
+
+const DEFAULT_STOREFRONT: Storefront = { country: 'us', lang: 'en' };
+
+function searchUrl(term: string, storefront: Storefront): string {
+  const params = new URLSearchParams({
+    c: 'apps',
+    q: term,
+    hl: storefront.lang,
+    gl: storefront.country,
+    price: '0',
+  });
   return `${BASE_URL}/store/search?${params.toString()}`;
 }
 
-function searchHtmlRecorder(term: string, file: string): Recorder {
+function searchHtmlRecorder(
+  term: string,
+  file: string,
+  storefront: Storefront = DEFAULT_STOREFRONT,
+): Recorder {
   return {
     name: 'search',
     async run(client) {
-      const html = await client.request({ url: searchUrl(term) });
+      const html = await client.request({ url: searchUrl(term, storefront) });
       await writeFixture(file, html);
     },
   };
@@ -228,6 +245,7 @@ const recorders: Recorder[] = [
   appPageRecorder('com.adex77.WhereAmI', 'app/whereami.html'),
   searchHtmlRecorder('panda', 'search/panda.html'),
   searchHtmlRecorder('where am i', 'search/where-am-i.html'),
+  searchHtmlRecorder('biedronka', 'search/biedronka-pl.html', { country: 'pl', lang: 'pl' }),
   suggestRecorder('pand', 'suggest/pand.txt'),
   listRecorder('TOP_FREE', 'GAME', 100, 'list/topfree-game.txt'),
   developerRecorder('5700313618786177705', 'developer/google.html'),
