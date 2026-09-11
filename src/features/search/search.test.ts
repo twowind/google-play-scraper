@@ -890,6 +890,38 @@ describe('search exact match anchor selection', () => {
     expect(events[0]?.reason).toBe('optional-section-parse');
   });
 
+  it('keeps scanning past a card that cannot be extracted', async () => {
+    const html = searchPageWithSections([
+      cardSection(exactMatchCard('broken', []), 24),
+      cardSection(exactMatchNode('x'), 25),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['x', 'a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('section-anchor-fallback');
+    expect(events[0]?.error.message).toContain('sections.1.25');
+  });
+
+  it('reports the scanned card rather than an unrelated node at the first anchor', async () => {
+    const html = searchPageWithSections([
+      cardSection(['noise']),
+      cardSection(exactMatchCard('broken', []), 24),
+      sectionWithApps(['a']),
+    ]);
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(html, events);
+
+    expect(results.map((item) => item.appId)).toEqual(['a']);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('optional-section-parse');
+    expect(events[0]?.error.message).not.toContain('appId');
+  });
+
   it('reports an unextractable card found only by scanning', async () => {
     const html = searchPageWithSections([
       cardSection(exactMatchCard('x', []), 24),

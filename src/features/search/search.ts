@@ -84,18 +84,17 @@ interface ScannedCard {
   sectionIndex: number;
 }
 
-function scanForExactMatchCard(sections: readonly unknown[]): ScannedCard | undefined {
+function* scanForExactMatchCards(sections: readonly unknown[]): Generator<ScannedCard> {
   for (const [sectionIndex, section] of sections.entries()) {
     if (!Array.isArray(section)) {
       continue;
     }
     for (const [entryIndex, entry] of section.entries()) {
       if (isExactMatchCard(entry)) {
-        return { card: entry, entryIndex, sectionIndex };
+        yield { card: entry, entryIndex, sectionIndex };
       }
     }
   }
-  return undefined;
 }
 
 function extractExactMatch(
@@ -134,8 +133,8 @@ function resolveExactMatch(
     }
   }
 
-  const scanned = scanForExactMatchCard(sections);
-  if (scanned !== undefined) {
+  let unusableCard: unknown;
+  for (const scanned of scanForExactMatchCards(sections)) {
     const scannedMatch = extractExactMatch(scanned.card);
     if (scannedMatch !== undefined) {
       const error = new ParseError(
@@ -144,10 +143,13 @@ function resolveExactMatch(
       onIntegrityEvent?.({ context: SEARCH_CONTEXT, reason: 'section-anchor-fallback', error });
       return scannedMatch;
     }
+    unusableCard ??= scanned.card;
   }
 
-  const unusable = getPath(sections[0], EXACT_MATCH_MAPPINGS.card) ?? scanned?.card;
-  return reportUnusableCard(unusable, onIntegrityEvent);
+  return reportUnusableCard(
+    unusableCard ?? getPath(sections[0], EXACT_MATCH_MAPPINGS.card),
+    onIntegrityEvent,
+  );
 }
 
 function prependExactMatch(
