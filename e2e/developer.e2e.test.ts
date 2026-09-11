@@ -1,38 +1,74 @@
 import { expect, it } from 'vitest';
 import { clientFromOptions } from '../src/core/http.js';
-import { fetchDeveloperFirstPage } from '../src/features/developer/developer.js';
+import {
+  fetchDeveloperFirstPage,
+  type DeveloperQuery,
+} from '../src/features/developer/developer.js';
 import { NotFoundError, type DegradationEvent, type DeveloperApp } from '../src/index.js';
-import { expectAppItemsContract } from './contracts.js';
+import {
+  expectAppItemsContract,
+  expectContinuationContract,
+  type ContinuationAnchor,
+} from './contracts.js';
 import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
 const GOOGLE_DEV_ID = '5700313618786177705';
-const FIRST_PAGE_NUM = 40;
+const GOOGLE_QUERY: DeveloperQuery = {
+  devId: GOOGLE_DEV_ID,
+  lang: 'en',
+  country: 'us',
+  throttle: 1,
+};
 const MULTI_PAGE_NUM = 100;
-const SLICE_NUM = 60;
+const CATALOG_PROBE = 500;
+
+async function googleFirstPage(): Promise<ContinuationAnchor> {
+  const { apps, token } = await fetchDeveloperFirstPage(GOOGLE_QUERY, clientFromOptions);
+
+  expect(apps.length, 'the google developer page serves no apps at all').toBeGreaterThan(0);
+  return { firstPageCount: apps.length, token };
+}
 
 liveDescribe('developer live contract', () => {
-  it('returns Google apps for the numeric developer id', async () => {
+  it('returns the whole first page when num matches it', async () => {
+    const { firstPageCount } = await googleFirstPage();
+
     const items = (await liveClient.developer({
       devId: GOOGLE_DEV_ID,
-      num: FIRST_PAGE_NUM,
+      num: firstPageCount,
     })) as DeveloperApp[];
 
-    expect(items).toHaveLength(FIRST_PAGE_NUM);
+    expect(items).toHaveLength(firstPageCount);
     expectAppItemsContract(items, 'google developer page');
     for (const item of items) {
       expect(item.developer).toContain('Google');
     }
   });
 
+  it('slices to exactly num one item past the cluster boundary', async () => {
+    const anchor = await googleFirstPage();
+    const num = anchor.firstPageCount + 1;
+
+    const items = (await liveClient.developer({
+      devId: GOOGLE_DEV_ID,
+      num,
+    })) as DeveloperApp[];
+
+    expectContinuationContract(anchor, items.length, num, 'google developer boundary slice');
+    expectAppItemsContract(items, 'google developer boundary slice');
+  });
+
   it('crosses the cluster boundary for the google numeric id', async () => {
     const events: DegradationEvent[] = [];
+    const anchor = await googleFirstPage();
+
     const items = (await liveClient.developer({
       devId: GOOGLE_DEV_ID,
       num: MULTI_PAGE_NUM,
       onDegradation: (event) => events.push(event),
     })) as DeveloperApp[];
 
-    expect(items).toHaveLength(MULTI_PAGE_NUM);
+    expectContinuationContract(anchor, items.length, MULTI_PAGE_NUM, 'google developer');
     expectAppItemsContract(items, 'google developer continuation');
     for (const item of items) {
       expect(item.developer).toContain('Google');
@@ -46,24 +82,13 @@ liveDescribe('developer live contract', () => {
     expect(events).toEqual([]);
   });
 
-  it('slices to exactly num when more apps are available', async () => {
-    const items = (await liveClient.developer({
-      devId: GOOGLE_DEV_ID,
-      num: SLICE_NUM,
-    })) as DeveloperApp[];
-
-    expect(items).toHaveLength(SLICE_NUM);
-  });
-
   it('confirms the numeric first page still requires a continuation', async () => {
-    const { apps, token } = await fetchDeveloperFirstPage(
-      { devId: GOOGLE_DEV_ID, lang: 'en', country: 'us', throttle: 1 },
-      clientFromOptions,
-    );
+    const { token } = await googleFirstPage();
 
-    expect(apps.length).toBeGreaterThan(0);
-    expect(apps.length).toBeLessThan(FIRST_PAGE_NUM);
-    expect(token).toBeDefined();
+    expect(
+      token,
+      'google now serves the whole developer catalogue on one page, re-port the pagination contract',
+    ).toBeDefined();
   });
 
   it('includes Minecraft when resolving the Mojang name id', async () => {
@@ -105,10 +130,13 @@ liveDescribe('developer live contract', () => {
   });
 
   it('returns the full catalog and stops when num exceeds it', async () => {
-    const items = (await liveClient.developer({ devId: 'Adex77', num: 500 })) as DeveloperApp[];
+    const items = (await liveClient.developer({
+      devId: 'Adex77',
+      num: CATALOG_PROBE,
+    })) as DeveloperApp[];
 
     expect(items.length).toBeGreaterThanOrEqual(1);
-    expect(items.length).toBeLessThan(500);
+    expect(items.length).toBeLessThan(CATALOG_PROBE);
     expectAppItemsContract(items, 'exhausted developer catalog');
   });
 });

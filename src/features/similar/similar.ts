@@ -1,5 +1,5 @@
 import * as z from 'zod/mini';
-import { clientFromOptions, type ResolveClient } from '../../core/http.js';
+import { clientFromOptions, type HttpClient, type ResolveClient } from '../../core/http.js';
 import { baseOptionsSchema, parseOptions } from '../../core/options.js';
 import { getPath } from '../../core/path.js';
 import { clusterItemSpecs } from '../../core/clusterItem.js';
@@ -31,9 +31,22 @@ export const similarOptionsSchema = z.extend(baseOptionsSchema, {
 
 export type SimilarOptions = z.input<typeof similarOptionsSchema>;
 
+type ParsedSimilarOptions = z.infer<typeof similarOptionsSchema>;
+
 const SIMILAR_CONTEXT = 'similar';
 
 type SimilarItem = Extracted<typeof similarItemSpecs>;
+
+export type SimilarQuery = Pick<
+  ParsedSimilarOptions,
+  'appId' | 'lang' | 'country' | 'throttle' | 'requestOptions' | 'onIntegrityEvent'
+>;
+
+export interface SimilarFirstPage {
+  client: HttpClient;
+  apps: SimilarItem[];
+  token: string | undefined;
+}
 
 function extractClusterPage(root: unknown): {
   apps: SimilarItem[];
@@ -47,43 +60,49 @@ function extractClusterPage(root: unknown): {
   return { apps, token: typeof token === 'string' ? token : undefined };
 }
 
+export async function fetchSimilarFirstPage(
+  query: SimilarQuery,
+  resolveClient: ResolveClient,
+): Promise<SimilarFirstPage> {
+  const client = resolveClient(query);
+  const detailsHtml = await client.request({
+    url: similarDetailsUrl(query.appId, query.country),
+  });
+  const details = parseScriptData(detailsHtml, similarDetailsScriptDataSelection);
+
+  const clusterPath = findSimilarClusterPath(details, query.onIntegrityEvent);
+  if (clusterPath === undefined) {
+    return { client, apps: [], token: undefined };
+  }
+
+  const clusterHtml = await client.request({
+    url: similarClusterUrl(clusterPath, query.lang, query.country),
+  });
+  const clusterData = parseScriptData(clusterHtml, similarClusterScriptDataSelection);
+  const clusterRoot = resolveScriptRoot(
+    clusterData,
+    similarClusterPageRootSpec,
+    'similar cluster page',
+    query.onIntegrityEvent,
+  );
+  return { client, ...extractClusterPage(clusterRoot.root) };
+}
+
 export function createSimilar(
   getApp: GetApp<App>,
   resolveClient: ResolveClient = clientFromOptions,
 ) {
   return async function similar(options: SimilarOptions): Promise<SimilarApp[] | App[]> {
     const parsed = parseOptions(similarOptionsSchema, options, SIMILAR_CONTEXT);
-
-    const client = resolveClient(parsed);
-    const detailsHtml = await client.request({
-      url: similarDetailsUrl(parsed.appId, parsed.country),
-    });
-    const details = parseScriptData(detailsHtml, similarDetailsScriptDataSelection);
-
-    const clusterPath = findSimilarClusterPath(details, parsed.onIntegrityEvent);
-    if (clusterPath === undefined) {
-      return z.array(similarAppSchema).parse([]);
-    }
-
-    const clusterHtml = await client.request({
-      url: similarClusterUrl(clusterPath, parsed.lang, parsed.country),
-    });
-    const clusterData = parseScriptData(clusterHtml, similarClusterScriptDataSelection);
-    const clusterRoot = resolveScriptRoot(
-      clusterData,
-      similarClusterPageRootSpec,
-      'similar cluster page',
-      parsed.onIntegrityEvent,
-    );
-    const page = extractClusterPage(clusterRoot.root);
+    const { client, apps, token } = await fetchSimilarFirstPage(parsed, resolveClient);
 
     const items = await fetchClusterApps({
       client,
       lang: parsed.lang,
       country: parsed.country,
       num: SIMILAR_MAX_APPS,
-      initialApps: page.apps,
-      initialToken: page.token,
+      initialApps: apps,
+      initialToken: token,
       itemSpecs: clusterItemSpecs,
       appsPath: PAGINATION_MAPPINGS.apps,
       tokenPath: PAGINATION_MAPPINGS.token,

@@ -1,10 +1,18 @@
 import { expect, it } from 'vitest';
+import { clientFromOptions } from '../src/core/http.js';
+import { fetchSimilarFirstPage, type SimilarQuery } from '../src/features/similar/similar.js';
 import { SIMILAR_MAX_APPS } from '../src/features/similar/specs.js';
 import { NotFoundError, type DegradationEvent, type SimilarApp } from '../src/index.js';
-import { expectAppItemsContract } from './contracts.js';
+import { expectAppItemsContract, expectContinuationContract } from './contracts.js';
 import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
-const SIMILAR_CLUSTER_PAGE_SIZE = 50;
+const FLAGSHIP_APP_ID = 'com.google.android.apps.translate';
+const FLAGSHIP_QUERY: SimilarQuery = {
+  appId: FLAGSHIP_APP_ID,
+  lang: 'en',
+  country: 'us',
+  throttle: 1,
+};
 
 liveDescribe('similar live contract', () => {
   it('returns a well formed cluster for the Where Am I geography game', async ({ annotate }) => {
@@ -22,16 +30,21 @@ liveDescribe('similar live contract', () => {
   });
 
   it('follows the cluster continuation for a flagship source app', async () => {
-    const sourceAppId = 'com.google.android.apps.translate';
     const events: DegradationEvent[] = [];
+    const { apps, token } = await fetchSimilarFirstPage(FLAGSHIP_QUERY, clientFromOptions);
+
     const items = (await liveClient.similar({
-      appId: sourceAppId,
+      appId: FLAGSHIP_APP_ID,
       onDegradation: (event) => events.push(event),
     })) as SimilarApp[];
 
-    expect(items.length).toBeGreaterThan(SIMILAR_CLUSTER_PAGE_SIZE);
-    expect(items.length).toBeLessThanOrEqual(SIMILAR_MAX_APPS);
-    expect(items.some((item) => item.appId === sourceAppId)).toBe(false);
+    expectContinuationContract(
+      { firstPageCount: apps.length, token },
+      items.length,
+      SIMILAR_MAX_APPS,
+      'flagship similar cluster',
+    );
+    expect(items.some((item) => item.appId === FLAGSHIP_APP_ID)).toBe(false);
     expectAppItemsContract(items, 'flagship similar cluster');
 
     expectFieldCoverage('similar', items, {
