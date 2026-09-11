@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createSearch, search, type SearchOptions } from './search.js';
-import { filterByPrice, matchesPriceFilter, SEARCH_RPC_ID } from './specs.js';
+import {
+  filterByPrice,
+  matchesPriceFilter,
+  SEARCH_RPC_ID,
+  searchScriptDataSelection,
+} from './specs.js';
+import { parseScriptData } from '../../core/scriptData.js';
+import { deletePath, replaceScriptBlockData } from '../../../test/helpers/responseMutation.js';
 import { searchResultSchema, type SearchResult } from './schema.js';
 import type { App } from '../app/schema.js';
 import type { DegradationEvent } from '../../core/degradation.js';
@@ -892,5 +899,50 @@ describe('search exact match anchor selection', () => {
     expect(results.map((item) => item.appId)).toEqual(['a']);
     expect(events).toHaveLength(1);
     expect(events[0]?.reason).toBe('optional-section-parse');
+  });
+});
+
+describe('search exact match offer mirror against the recorded card', () => {
+  const pandaWithoutOfferNode = (): string => {
+    const root = parseScriptData(pandaHtml, searchScriptDataSelection).blocks['ds:4'];
+    return replaceScriptBlockData(pandaHtml, 'ds:4', deletePath(root, [0, 1, 0, 23, 17]));
+  };
+
+  it('resolves url, price, currency and free from the detail node of the real card', async () => {
+    const events: IntegrityEvent[] = [];
+
+    const results = await searchOn(pandaWithoutOfferNode(), events);
+
+    expect(results[0]?.appId).toBe('com.pandaexpress.app');
+    expect(results[0]?.url).toBe(
+      'https://play.google.com/store/apps/details?id=com.pandaexpress.app',
+    );
+    expect(results[0]?.price).toBe(0);
+    expect(results[0]?.currency).toBe('USD');
+    expect(results[0]?.free).toBe(true);
+    expect(events).toEqual([]);
+  });
+
+  it('agrees with the primary offer node the recorded card still carries', async () => {
+    const withMirror = await searchOn(pandaWithoutOfferNode());
+    const withPrimary = await searchOn(pandaHtml);
+
+    expect(withMirror[0]?.url).toBe(withPrimary[0]?.url);
+    expect(withMirror[0]?.price).toBe(withPrimary[0]?.price);
+    expect(withMirror[0]?.currency).toBe(withPrimary[0]?.currency);
+    expect(withMirror[0]?.free).toBe(withPrimary[0]?.free);
+  });
+
+  it('reads each offer field from its own node when the two are mixed', async () => {
+    const detail = detailWithOffer('x', 4_990_000, 'PLN');
+    const card = exactMatchCard('x', detail, primaryOfferNode('x'));
+    const html = searchPageWithSections([cardSection(card), sectionWithApps(['a'])]);
+
+    const results = await searchOn(html);
+
+    expect(results[0]?.url).toBe('https://play.google.com/store/apps/details?id=x');
+    expect(results[0]?.price).toBe(4.99);
+    expect(results[0]?.currency).toBe('PLN');
+    expect(results[0]?.free).toBe(false);
   });
 });
