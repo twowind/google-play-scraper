@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.2.0](https://github.com/MrAdex77/google-play-scraper/compare/v1.1.0...v1.2.0) (2026-09-11)
+
+
+### Features
+
+* **core:** add the section anchor fallback integrity reason ([a62a8e6](https://github.com/MrAdex77/google-play-scraper/commit/a62a8e61d9f44ea9b0c488e542a57cac3912ad5b))
+
+
+### Bug Fixes
+
+* **e2e:** derive the iterator stream limits from the live first page ([b9e5c58](https://github.com/MrAdex77/google-play-scraper/commit/b9e5c585961c154bb04aa4ba60797e0322434f78))
+* **e2e:** key the offer contract on currency instead of preregistration ([abacd7a](https://github.com/MrAdex77/google-play-scraper/commit/abacd7afe954e2feaecbcc3c8467ad6d0bb0c76d))
+* **e2e:** stop live contract tests failing on catalogue movement ([c6b1102](https://github.com/MrAdex77/google-play-scraper/commit/c6b1102ebcfa8b76528a6ad660455aaa7b858a08))
+* **e2e:** stop pinning catalogue state in live contract tests ([cb872a4](https://github.com/MrAdex77/google-play-scraper/commit/cb872a4c11bdaaf457c07f0ca16a556da45a13ea))
+* **e2e:** stop pinning search rank and result counts ([6010295](https://github.com/MrAdex77/google-play-scraper/commit/60102950a4ccbbd61170f9782020d2540d1bd0bf))
+* **e2e:** stop pinning the google developer catalogue size ([932db2a](https://github.com/MrAdex77/google-play-scraper/commit/932db2ad92489ec4fdb2a20615d4d30c3678c66f)), closes [#116](https://github.com/MrAdex77/google-play-scraper/issues/116)
+* **e2e:** stop pinning the similar cluster catalogue size ([7e45420](https://github.com/MrAdex77/google-play-scraper/commit/7e45420efb95c91bfdde9c72a5229189b721b126))
+* **search:** fall back to the detail offer node for exact match pricing ([b45ed22](https://github.com/MrAdex77/google-play-scraper/commit/b45ed2273dcab41031e82c0d10c0ba772fbf67cb))
+* **search:** keep scanning past an unusable exact match card ([04fe9bf](https://github.com/MrAdex77/google-play-scraper/commit/04fe9bfe34143cbc5128bd75706e34cb31996d9b))
+* **search:** prefer an exact match card that actually extracts ([b942f24](https://github.com/MrAdex77/google-play-scraper/commit/b942f248958914124af412f092951ed7583e7598))
+* **search:** resolve the exact match card across sections ([5ed6a3d](https://github.com/MrAdex77/google-play-scraper/commit/5ed6a3d3601c74580343bc831c2b0bcf2d0f30dd))
+* **search:** return the exact match card search was silently dropping ([33f595b](https://github.com/MrAdex77/google-play-scraper/commit/33f595b8e87de0d8c2d469554cbcbda3599f2e38))
+* **search:** return the exact match card when the page carries no list ([ca1294a](https://github.com/MrAdex77/google-play-scraper/commit/ca1294af0d5cbbb91b26d7d938184b28bad5e46d))
+
 ## [1.1.0](https://github.com/MrAdex77/google-play-scraper/compare/v1.0.0...v1.1.0) (2026-07-31)
 
 
