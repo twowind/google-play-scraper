@@ -67,6 +67,12 @@ The other integrity reasons have narrower responses:
 - `pagination-token-cycle`: preserve the captured request sequence, confirm the
   repeated token, and inspect the pagination response before changing token
   extraction. Tokens must never be written to logs or event messages.
+- `section-anchor-fallback`: the exact match card resolved outside its declared
+  anchor. The event message names the section and index where it was found.
+  Refresh the search fixture, move `EXACT_MATCH_MAPPINGS.card` to the reported
+  index, and confirm the event stops. The public result is already correct, so
+  this is a scheduled repair rather than an outage, but leaving it unrepaired
+  means the next drift has no anchor left to fall back from.
 
 ## Live contract assertion rules
 
@@ -100,7 +106,7 @@ each one has to be registered in this runbook before it is written:
    deliberate change by the person reading the failure, not a surprise. Prefer
    this over any pool whenever an owned listing can carry the state.
 6. **Regime tripwire and maintained anchor pool.** A documented probe of
-   Google's serving behaviour, listed under "Pagination tripwires", or a pool
+   Google's serving behaviour, listed under "Serving regime tripwires", or a pool
    that guards a state no owned listing can reach, listed under "Maintained
    anchor pools". These fail on purpose when Google changes, and their failure
    messages have to name the maintenance task rather than read as a parse break.
@@ -221,14 +227,18 @@ owned listing can reach it. `com.adex77.WhereAmI` carries `adSupported`,
 `released`, `contentRatingDescription`, `recentChanges`), so those gates sit on
 it directly rather than on a pool of third-party apps.
 
-One state has no owned anchor, because Play Pass membership is granted by Google
-and cannot be arranged for a maintainer's own app:
+Two states have no owned anchor, because Google decides both and neither can be
+arranged for a maintainer's own app:
 
+- `EXACT_MATCH_CARD_CANDIDATES` in `e2e/search.e2e.test.ts` must keep one
+  package id whose search serves an exact match card. It is registered under
+  "Serving regime tripwires" above, where its re-anchoring task is written out.
 - `PLAY_PASS_CANDIDATES` in `e2e/edgeCases.e2e.test.ts` must keep one title in
   Play Pass. It runs against four titles and fails only when all four have left,
   which is the only live gate on the `[1, 2, 62]` path.
 
-Its failure message says "re-anchor the pool". That is a maintenance task, not a
+The play pass failure message says "re-anchor the pool". That is a maintenance
+task, not a
 scraper break: replace the drifted ids with listings that are in the wanted
 state and commit as `test(e2e): re-anchor the play pass pool`. Never delete the
 pool assertion instead, since dropping it leaves `isAvailableInPlayPass` with no
@@ -258,14 +268,30 @@ Scrape the `id=` parameters out of that page, confirm `preregister` on a handful
 with `app()`, and commit the replacements as
 `test(e2e): refresh the preregistration candidates`.
 
-## Pagination tripwires
+## Serving regime tripwires
 
-Two e2e tests pin the current Google Play serving regime instead of the code:
+Three e2e tests pin the current Google Play serving regime instead of the code:
 
+- `confirms google still serves an exact match card for a package id search` in
+  `e2e/search.e2e.test.ts`
 - `confirms google still serves no search continuation token` in
   `e2e/search.e2e.test.ts`
 - `confirms the numeric first page still requires a continuation` in
   `e2e/developer.e2e.test.ts`
+
+The exact match tripwire is the only live gate on the card path. The card is
+parsed by `exactMatchSpecs`, which shares no path with the ordinary result
+specs, and four of its fields have a single source each in the page, so a
+drift there deletes the top result silently. `developerId` is produced by
+`exactMatchSpecs` alone, so a first result carrying one proves the card path
+ran rather than the list happening to rank the app first. No owned listing
+can carry this state: measured on 2026-09-11, a package id search for
+`com.adex77.WhereAmI` serves a list and no card in both the `us` and `pl`
+storefronts, so `EXACT_MATCH_CARD_CANDIDATES` is a maintained pool under the
+rules above and fails only when every anchor has lost its card. Re-anchor the
+pool against package ids Google still serves a card for and commit as
+`test(e2e): re-anchor the exact match pool`. Never delete the assertion
+instead, since dropping it leaves the card path with no live coverage at all.
 
 Two measured serving limits back the count assertions that surround them:
 `FIRST_PAGE_SIZE` (150 reviews) in `e2e/iterators.e2e.test.ts` and
@@ -295,7 +321,12 @@ A tripwire failure means Google changed the serving regime, not that the code
 broke. The count assertions in the surrounding suites rely on the premises these
 tests pin, so re-port the affected contract before touching any threshold.
 
-When the search tripwire fires because a continuation token returned:
+Two of the three tripwires live in `e2e/search.e2e.test.ts` and fail for
+unrelated reasons. The continuation token one is answered by the procedure
+below. The exact match card one is answered by re-anchoring the pool as
+described above it.
+
+When the search continuation token tripwire fires because a token returned:
 
 1. Open `play.google.com/store/search?q=game&c=apps` in a browser with the
    network panel filtered to `batchexecute` and scroll to the bottom of the
