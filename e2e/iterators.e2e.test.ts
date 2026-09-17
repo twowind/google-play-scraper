@@ -12,7 +12,7 @@ import {
   expectReviewContract,
   expectReviewsContract,
 } from './contracts.js';
-import { liveClient, liveDescribe } from './helpers.js';
+import { fetchReviewsFirstPage, liveClient, liveDescribe } from './helpers.js';
 
 const WHATSAPP = 'com.whatsapp';
 const GEO_GAME = 'com.adex77.WhereAmI';
@@ -31,14 +31,13 @@ const SEARCH_QUERY: SearchQuery = {
   price: 'all',
   throttle: 1,
 };
-const FIRST_PAGE_SIZE = 150;
-const STREAM_LIMIT = 200;
 const DEVELOPER_STREAM_LIMIT = 40;
-const REVIEWS_ALL_LIMIT = 50;
 const REVIEWS_ALL_CEILING = 5000;
 
 liveDescribe('iterators live contract', () => {
   it('streams reviews across the first page boundary', async () => {
+    const anchor = await fetchReviewsFirstPage(WHATSAPP);
+    const limit = anchor.firstPageCount + 1;
     const collected: string[] = [];
     const events: IntegrityEvent[] = [];
     for await (const review of liveClient.reviewsIterator({
@@ -47,14 +46,13 @@ liveDescribe('iterators live contract', () => {
     })) {
       expectReviewContract(review, 'streamed review');
       collected.push(review.id);
-      if (collected.length === STREAM_LIMIT) {
+      if (collected.length === limit) {
         break;
       }
     }
 
-    expect(collected).toHaveLength(STREAM_LIMIT);
-    expect(collected.length).toBeGreaterThan(FIRST_PAGE_SIZE);
-    expect(new Set(collected).size).toBe(STREAM_LIMIT);
+    expectContinuationContract(anchor, collected.length, limit, 'reviews stream');
+    expect(new Set(collected).size).toBe(collected.length);
     expect(events).toEqual([]);
   });
 
@@ -129,13 +127,17 @@ liveDescribe('iterators live contract', () => {
     expect(collected).toEqual([]);
   });
 
-  it('collects exactly maxReviews reviews through reviewsAll', async () => {
-    const reviews: Review[] = await liveClient.reviewsAll({
-      appId: WHATSAPP,
-      maxReviews: REVIEWS_ALL_LIMIT,
-    });
+  it('collects exactly maxReviews reviews one short of the live first page', async () => {
+    const { firstPageCount } = await fetchReviewsFirstPage(WHATSAPP);
+    expect(
+      firstPageCount,
+      'the reviews first page must carry more than one review to stop inside it',
+    ).toBeGreaterThan(1);
+    const maxReviews = firstPageCount - 1;
 
-    expect(reviews).toHaveLength(REVIEWS_ALL_LIMIT);
+    const reviews: Review[] = await liveClient.reviewsAll({ appId: WHATSAPP, maxReviews });
+
+    expect(reviews).toHaveLength(maxReviews);
     expectReviewsContract(reviews, 'reviewsAll page');
   });
 

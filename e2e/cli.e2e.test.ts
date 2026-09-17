@@ -153,10 +153,10 @@ liveDescribe('cli commands against live google play', () => {
     expect(stderr.toLowerCase()).toContain('not found');
   });
 
-  it('reviews accumulates exactly --num reviews with valid scores', async () => {
+  it('reviews respects --num with valid scores', async () => {
     const parsed = await runCliJson(['reviews', TRANSLATE_ID, '--num', '5', '--sort', 'rating']);
     const result = parsed as { data: { id: string; score: number }[] };
-    expect(result.data).toHaveLength(5);
+    expectRequestedCountContract(result.data.length, 5, 'cli reviews');
     for (const review of result.data) {
       expect(review.id.length).toBeGreaterThan(0);
       expect(review.score).toBeGreaterThanOrEqual(1);

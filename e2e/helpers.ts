@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest';
 import { createClient } from '../src/index.js';
+import type { ContinuationAnchor } from './contracts.js';
 import { fieldCoverage } from './coverage.js';
 
 const LIVE_TESTS_DISABLED = process.env.GP_E2E === '0';
@@ -9,6 +10,16 @@ const REQUESTS_PER_SECOND = 1;
 export const liveDescribe = describe.skipIf(LIVE_TESTS_DISABLED);
 
 export const liveClient = createClient({ throttle: REQUESTS_PER_SECOND });
+
+export async function fetchReviewsFirstPage(appId: string): Promise<ContinuationAnchor> {
+  const page = await liveClient.reviews({ appId, paginate: true });
+
+  expect(
+    page.data.length,
+    `${appId}: the reviews first page serves no reviews at all`,
+  ).toBeGreaterThan(0);
+  return { firstPageCount: page.data.length, token: page.nextPaginationToken ?? undefined };
+}
 
 export function expectFieldFilledSomewhere(
   context: string,
