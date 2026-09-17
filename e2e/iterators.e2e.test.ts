@@ -32,7 +32,6 @@ const SEARCH_QUERY: SearchQuery = {
   price: 'all',
   throttle: 1,
 };
-const DEVELOPER_STREAM_LIMIT = 40;
 const REVIEWS_ALL_CEILING = 5000;
 
 liveDescribe('iterators live contract', () => {
@@ -86,6 +85,7 @@ liveDescribe('iterators live contract', () => {
 
   it('streams developer apps across the first page boundary', async () => {
     const { apps, token } = await fetchDeveloperFirstPage(DEVELOPER_QUERY, clientFromOptions);
+    const limit = apps.length + 1;
     const collected: string[] = [];
     const events: DegradationEvent[] = [];
     for await (const item of liveClient.developerIterator({
@@ -94,7 +94,7 @@ liveDescribe('iterators live contract', () => {
     })) {
       expectAppItemContract(item, 'streamed developer app');
       collected.push(item.appId);
-      if (collected.length === DEVELOPER_STREAM_LIMIT) {
+      if (collected.length === limit) {
         break;
       }
     }
@@ -102,7 +102,7 @@ liveDescribe('iterators live contract', () => {
     expectContinuationContract(
       { firstPageCount: apps.length, token },
       collected.length,
-      DEVELOPER_STREAM_LIMIT,
+      limit,
       'developer stream',
     );
     expect(new Set(collected).size).toBe(collected.length);

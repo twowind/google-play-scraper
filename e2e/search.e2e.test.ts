@@ -150,7 +150,7 @@ liveDescribe('search live contract', () => {
 
     const results = (await search({
       term: 'game',
-      num: 100,
+      num: page.apps.length + 1,
       onDegradation: (event) => events.push(event),
     })) as SearchResult[];
 

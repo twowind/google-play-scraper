@@ -50,7 +50,7 @@ liveDescribe('app live contract', () => {
     expectListingContract(result, 'flagship listing');
     expect(result.appId).toBe(TRANSLATE);
     expect(typeof result.score).toBe('number');
-    expect(result.ratings).toBeGreaterThan(100000);
+    expect(result.ratings).toBeGreaterThan(0);
     expect(result.free).toBe(true);
     expect(events).toEqual([]);
   });

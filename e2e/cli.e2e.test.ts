@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { category } from '../src/index.js';
 import { expectRequestedCountContract } from './contracts.js';
 import { liveDescribe } from './helpers.js';
 
@@ -220,15 +221,10 @@ liveDescribe('cli commands against live google play', () => {
     expect(report).not.toHaveProperty('privacyPolicyUrl');
   });
 
-  it('categories prints the taxonomy including GAME and APPLICATION', async () => {
+  it('categories prints exactly the category taxonomy constant', async () => {
     const parsed = await runCliJson(['categories']);
-    const ids = parsed as string[];
-    expect(ids.length).toBeGreaterThan(30);
-    expect(ids).toContain('GAME');
-    expect(ids).toContain('APPLICATION');
-    for (const id of ids) {
-      expect(id).toMatch(/^[A-Z_0-9]+$/);
-    }
+
+    expect(parsed).toEqual(Object.values(category));
   });
 
   it('availability reports the canonical app available in us and pl', async () => {
