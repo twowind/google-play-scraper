@@ -20,15 +20,18 @@ liveDescribe('permissions live contract', () => {
     }
   });
 
-  it('returns typed entries for the Where Am I geography game', async () => {
+  it('returns entries from both permission sections for the Where Am I geography game', async () => {
     const result = await liveClient.permissions({ appId: 'com.adex77.WhereAmI' });
+    const items = result as { permission: string; type: number }[];
 
-    expect(result.length).toBeGreaterThan(0);
-    for (const entry of result) {
-      const item = entry as { permission: string; type: number };
+    for (const item of items) {
       expect(item.permission.length).toBeGreaterThan(0);
       expect([permission.COMMON, permission.OTHER]).toContain(item.type);
     }
+    expect(
+      new Set(items.map((item) => item.type)),
+      'the owned listing declares common and other permissions, so an empty section means a section path drifted',
+    ).toEqual(new Set([permission.COMMON, permission.OTHER]));
   });
 
   it('returns plain permission strings when short', async () => {
