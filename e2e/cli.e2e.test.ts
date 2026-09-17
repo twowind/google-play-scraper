@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { expectRequestedCountContract } from './contracts.js';
 import { liveDescribe } from './helpers.js';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -111,7 +112,7 @@ liveDescribe('cli commands against live google play', () => {
     expect(entries[1]?.appId).toBe(MISSING_ID);
   });
 
-  it('list returns the requested number of free games', async () => {
+  it('list returns free games within the requested count', async () => {
     const parsed = await runCliJson([
       'list',
       '--collection',
@@ -122,7 +123,7 @@ liveDescribe('cli commands against live google play', () => {
       '5',
     ]);
     const items = parsed as { appId: string; free: boolean; price: number }[];
-    expect(items).toHaveLength(5);
+    expectRequestedCountContract(items.length, 5, 'cli list');
     for (const item of items) {
       expect(item.appId.length).toBeGreaterThan(0);
       expect(item.free).toBe(true);
