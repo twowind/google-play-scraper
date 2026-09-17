@@ -1,15 +1,13 @@
 import { expect, it } from 'vitest';
 import { sort, type IntegrityEvent } from '../src/index.js';
-import { expectReviewsContract } from './contracts.js';
+import { expectContinuationContract, expectReviewsContract, reviewsAnchor } from './contracts.js';
 import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
 const TRANSLATE = 'com.google.android.apps.translate';
 const GEO_GAME = 'com.adex77.WhereAmI';
 const WHATSAPP = 'com.whatsapp';
-const REVIEW_PAGE_FLOOR = 100;
-const ACCUMULATED_NUM = 320;
 const EXHAUSTION_PROBE = 5000;
-const LOCALIZED_OVERLAP_CEILING = 15;
+const LOCALIZED_OVERLAP_RATIO = 0.1;
 
 liveDescribe('reviews live contract', () => {
   it('returns a valid first page for the Where Am I geography game', async () => {
@@ -19,15 +17,20 @@ liveDescribe('reviews live contract', () => {
     expectReviewsContract(result.data, 'geography game reviews');
   });
 
-  it('accumulates exactly the requested number of reviews with unique ids', async () => {
+  it('accumulates exactly one review past the live first page with unique ids', async () => {
     const events: IntegrityEvent[] = [];
+    const anchor = reviewsAnchor(
+      await liveClient.reviews({ appId: TRANSLATE, paginate: true }),
+      'accumulated reviews',
+    );
+    const num = anchor.firstPageCount + 1;
     const result = await liveClient.reviews({
       appId: TRANSLATE,
-      num: ACCUMULATED_NUM,
+      num,
       onIntegrityEvent: (event) => events.push(event),
     });
 
-    expect(result.data).toHaveLength(ACCUMULATED_NUM);
+    expectContinuationContract(anchor, result.data.length, num, 'accumulated reviews');
     expect(result.nextPaginationToken).toBeNull();
     expectReviewsContract(result.data, 'accumulated reviews');
     expect(events).toEqual([]);
@@ -77,7 +80,10 @@ liveDescribe('reviews live contract', () => {
   it('returns the newest sort in non increasing date order', async () => {
     const result = await liveClient.reviews({ appId: WHATSAPP, paginate: true });
 
-    expect(result.data.length).toBeGreaterThan(REVIEW_PAGE_FLOOR);
+    expect(
+      result.data.length,
+      'newest sorted reviews: an order needs at least two reviews to compare',
+    ).toBeGreaterThan(1);
     expectReviewsContract(result.data, 'newest sorted reviews');
     const timestamps = result.data.map((review) => Date.parse(review.date));
     for (const [index, timestamp] of timestamps.entries()) {
@@ -96,13 +102,17 @@ liveDescribe('reviews live contract', () => {
       country: 'pl',
     });
 
-    expect(polishPage.data.length).toBeGreaterThan(REVIEW_PAGE_FLOOR);
+    expect(defaultPage.data.length).toBeGreaterThan(0);
+    expect(polishPage.data.length).toBeGreaterThan(0);
     expect(polishPage.nextPaginationToken).not.toBeNull();
     expectReviewsContract(polishPage.data, 'polish storefront reviews');
 
     const defaultIds = new Set(defaultPage.data.map((review) => review.id));
     const overlap = polishPage.data.filter((review) => defaultIds.has(review.id)).length;
-    expect(overlap).toBeLessThan(LOCALIZED_OVERLAP_CEILING);
+    expect(
+      overlap,
+      `polish storefront reviews: ${overlap.toString()} of ${polishPage.data.length.toString()} reviews also appear on the default storefront`,
+    ).toBeLessThan(polishPage.data.length * LOCALIZED_OVERLAP_RATIO);
   });
 
   it('returns an empty page instead of throwing for a missing app', async () => {

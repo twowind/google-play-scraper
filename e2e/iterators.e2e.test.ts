@@ -11,6 +11,7 @@ import {
   expectContinuationContract,
   expectReviewContract,
   expectReviewsContract,
+  reviewsAnchor,
 } from './contracts.js';
 import { liveClient, liveDescribe } from './helpers.js';
 
@@ -31,14 +32,15 @@ const SEARCH_QUERY: SearchQuery = {
   price: 'all',
   throttle: 1,
 };
-const FIRST_PAGE_SIZE = 150;
-const STREAM_LIMIT = 200;
-const DEVELOPER_STREAM_LIMIT = 40;
-const REVIEWS_ALL_LIMIT = 50;
 const REVIEWS_ALL_CEILING = 5000;
 
 liveDescribe('iterators live contract', () => {
   it('streams reviews across the first page boundary', async () => {
+    const anchor = reviewsAnchor(
+      await liveClient.reviews({ appId: WHATSAPP, paginate: true }),
+      'reviews stream',
+    );
+    const limit = anchor.firstPageCount + 1;
     const collected: string[] = [];
     const events: IntegrityEvent[] = [];
     for await (const review of liveClient.reviewsIterator({
@@ -47,14 +49,13 @@ liveDescribe('iterators live contract', () => {
     })) {
       expectReviewContract(review, 'streamed review');
       collected.push(review.id);
-      if (collected.length === STREAM_LIMIT) {
+      if (collected.length === limit) {
         break;
       }
     }
 
-    expect(collected).toHaveLength(STREAM_LIMIT);
-    expect(collected.length).toBeGreaterThan(FIRST_PAGE_SIZE);
-    expect(new Set(collected).size).toBe(STREAM_LIMIT);
+    expectContinuationContract(anchor, collected.length, limit, 'reviews stream');
+    expect(new Set(collected).size).toBe(collected.length);
     expect(events).toEqual([]);
   });
 
@@ -84,6 +85,7 @@ liveDescribe('iterators live contract', () => {
 
   it('streams developer apps across the first page boundary', async () => {
     const { apps, token } = await fetchDeveloperFirstPage(DEVELOPER_QUERY, clientFromOptions);
+    const limit = apps.length + 1;
     const collected: string[] = [];
     const events: DegradationEvent[] = [];
     for await (const item of liveClient.developerIterator({
@@ -92,7 +94,7 @@ liveDescribe('iterators live contract', () => {
     })) {
       expectAppItemContract(item, 'streamed developer app');
       collected.push(item.appId);
-      if (collected.length === DEVELOPER_STREAM_LIMIT) {
+      if (collected.length === limit) {
         break;
       }
     }
@@ -100,7 +102,7 @@ liveDescribe('iterators live contract', () => {
     expectContinuationContract(
       { firstPageCount: apps.length, token },
       collected.length,
-      DEVELOPER_STREAM_LIMIT,
+      limit,
       'developer stream',
     );
     expect(new Set(collected).size).toBe(collected.length);
@@ -114,7 +116,7 @@ liveDescribe('iterators live contract', () => {
       collected.push(result.appId);
     }
 
-    expect(collected.length).toBeGreaterThanOrEqual(10);
+    expect(collected.length, 'the drained search stream must yield results').toBeGreaterThan(0);
     expect(new Set(collected).size).toBe(collected.length);
   });
 
@@ -129,13 +131,20 @@ liveDescribe('iterators live contract', () => {
     expect(collected).toEqual([]);
   });
 
-  it('collects exactly maxReviews reviews through reviewsAll', async () => {
-    const reviews: Review[] = await liveClient.reviewsAll({
-      appId: WHATSAPP,
-      maxReviews: REVIEWS_ALL_LIMIT,
-    });
+  it('collects exactly maxReviews reviews one short of the live first page', async () => {
+    const { firstPageCount } = reviewsAnchor(
+      await liveClient.reviews({ appId: WHATSAPP, paginate: true }),
+      'reviewsAll page',
+    );
+    expect(
+      firstPageCount,
+      'the reviews first page must carry more than one review to stop inside it',
+    ).toBeGreaterThan(1);
+    const maxReviews = firstPageCount - 1;
 
-    expect(reviews).toHaveLength(REVIEWS_ALL_LIMIT);
+    const reviews: Review[] = await liveClient.reviewsAll({ appId: WHATSAPP, maxReviews });
+
+    expect(reviews).toHaveLength(maxReviews);
     expectReviewsContract(reviews, 'reviewsAll page');
   });
 

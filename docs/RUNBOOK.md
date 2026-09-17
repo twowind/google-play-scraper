@@ -103,8 +103,9 @@ today, which leaves four ordinary kinds:
    are a tautology: `offersIAP` and `IAPRange` both read `[1, 2, 19, 0]`, so
    only the shape of `IAPRange` is worth asserting.
 3. **Self-anchoring.** The assertion derives its expectation from the same
-   response, for example `list({ num })` returning exactly `num` items or the
-   search result set matching the first page it was built from.
+   run, for example the search result set matching the first page it was built
+   from, or `list` returning exactly `num` items for a `num` below the chart
+   depth the same run just measured.
 4. **Immutable fact.** A release date already in the past, an app id that
    resolves forever, a category id that is part of the taxonomy constant.
 
@@ -148,30 +149,58 @@ Counts are where catalogue state sneaks back in, so they get their own rules.
 Issue #116 came from a suite that demanded a hundred apps from Google's own
 developer page. Measured on 2026-09-10, two consecutive calls returned 94 and
 then 95 apps, with different sets and 84 of 94 positions reordered, so no fixed
-number could ever have been right.
+number could ever have been right. Issue #119 repeated it on a top chart: the
+suite pinned TOP_FREE APPLICATION at 200 apps and on 2026-09-17 Google served
+199, three calls in a row, while GAME_TRIVIA, recorded at 162 a week earlier,
+filled to 200.
 
-1. A count **ceiling or equality** against third-party catalogue state is never
-   allowed. `num` is a ceiling this library controls, so `length <= num` is an
-   invariant; `length === num` is one only when the same response proves the
-   catalogue reaches that far.
-2. A count **floor** is allowed only as a partial-parse detector, and only when
-   it sits at or below half the measured value, or when a serving regime
-   constant registered below backs it. A floor exists so that a drifted path
-   returning one item fails; it is not a claim about how much Google publishes.
-3. "A continuation was followed" is expressed against the first page of the
-   same surface, never against a constant. Fetch that page with
-   `fetchDeveloperFirstPage`, `fetchSearchFirstPage` or `fetchSimilarFirstPage`,
-   then hand it to `expectContinuationContract`, which requires the aggregate to
-   stay within the requested limit and to exceed the page it continued from.
-   A probe whose first page stops carrying a token fails with a message naming
-   the re-anchor task, because that is a serving regime change and not a parse
-   break.
+Count floors never detect a parse break. Every item extractor is all or
+nothing: a malformed item throws a `SpecError`, and every path that skips data
+on purpose reports it through `onDegradation` or `onIntegrityEvent`. A drifted
+path therefore shows up as an error, an event, or an empty array, never as a few
+items fewer. The one surface that can lose part of its result silently is
+`permissions`, whose common and other sections resolve independently, and that
+is guarded by requiring both sections on the owned `com.adex77.WhereAmI`
+listing rather than by a count. A live count assertion may only take one of
+these shapes:
 
-Two shapes follow from those rules and are worth copying. `num` equal to the
+1. **Non empty.** `count > 0` where the anchor must carry data, which catches a
+   path that drifted onto nothing. A test that needs two items to mean anything,
+   such as an ordering check, may require two.
+2. **Requested ceiling.** `count <= num`. `num` is forwarded or sliced by this
+   library, so returning more than was asked is a real break.
+   `expectRequestedCountContract` asserts both this and the non empty shape.
+3. **Proven equality.** `count === num` only when the same run proves more than
+   `num` items exist: an anchor fetched first served more than `num`, or served a
+   continuation token and `num` sits one item past it.
+4. **Relational.** A count measured against another count from the same run,
+   such as an aggregate against the first page it continued from, or an overlap
+   against the size of the page it was taken from.
+5. **Library constants and controlled anchors.** A cap this library imposes
+   (`SIMILAR_MAX_APPS`, the five suggestion cap), the taxonomy constant behind
+   `categories()`, and exhaustion probes on owned listings.
+
+Everything else is catalogue state: a floor such as "more than ten results", a
+ceiling such as "at most forty on the first page", or an equality such as "the
+chart holds 200 apps". None of them is allowed, whatever the measured margin.
+
+"A continuation was followed" is expressed against the first page of the same
+surface, never against a constant. Fetch that page with
+`fetchDeveloperFirstPage`, `fetchSearchFirstPage` or `fetchSimilarFirstPage`, or
+read a `paginate: true` reviews page through `reviewsAnchor`, then hand it to
+`expectContinuationContract`, which requires the aggregate to stay within the
+requested limit and to exceed the page it continued from. A probe whose first page stops carrying a token fails with a
+message naming the re-anchor task, because that is a serving regime change and
+not a parse break.
+
+Three shapes follow from those rules and are worth copying. `num` equal to the
 live first page count must return exactly that page, and `num` one past it must
 return exactly one more item, which pins the slice at the sharpest place there
-is, the cluster boundary. Both derive every number from the same run, so they
-hold whether the catalogue grows or shrinks.
+is, the cluster boundary. For a single request surface such as `list`, request
+far past the depth first, then request half of what that run served and require
+exactly that many, which proves `num` reaches Google without naming a depth.
+Every number derives from the same run, so they hold whether the catalogue grows
+or shrinks.
 
 Exact slicing beyond the boundary belongs offline, where it is deterministic:
 `src/features/developer/developer.test.ts` already proves `num` 13 across a
@@ -189,6 +218,7 @@ turns up:
   offer node, rating, histogram, installs, purchase and release state
   invariants.
 - `expectReviewContract` and `expectReviewsContract` for review pages.
+- `expectRequestedCountContract` for any result requested with a `num`.
 - `expectContinuationContract` for a paginated aggregate measured against the
   first page it continued from.
 - `expectSearchListingAgreement` for a search item measured against the same
@@ -208,10 +238,18 @@ A consequence worth stating plainly: `free` false is not the claim "this app
 costs money", because an offerless listing also reads as `free` false with
 `price` 0. Read `currency` first when deciding which state a listing is in.
 
-Three thresholds in the suite are measured, not guessed, all on 2026-08-26:
+Three thresholds in the suite are measured, not guessed, on 2026-08-26 unless
+a bullet says otherwise:
 
-- The histogram tracks the rating count to within `max(10, 1% of ratings)`,
-  measured across listings from 31 to 242 million ratings.
+- The histogram tracks the rating count to within `max(10, 10% of ratings)`.
+  The histogram total always sat at or below the rating count, and the gap
+  ratio grows as listings shrink: measured on 2026-09-17 across 35 listings it
+  was under 0.01% above a million ratings, 1.07% at 3556, 1.63% at 7723 and
+  5.1% at 39, where the floor of ten takes over. The earlier 1% figure came
+  from flagship listings only. Ten percent is six times the worst measured
+  drift and still a third of the smallest number a drifted `ratings` path could
+  read instead, the review count, which never exceeds about thirty percent of
+  the ratings on any sampled listing.
 - `scoreText` is the score rounded to one decimal, so it agrees to within 0.051
   once the locale decimal comma is normalized.
 - `DATA_RICH_COLLECTED_FLOOR` in `e2e/datasafety.e2e.test.ts` is 10 against 37
@@ -303,33 +341,17 @@ pool against package ids Google still serves a card for and commit as
 `test(e2e): re-anchor the exact match pool`. Never delete the assertion
 instead, since dropping it leaves the card path with no live coverage at all.
 
-Two measured serving limits back the count assertions that surround them:
-`FIRST_PAGE_SIZE` (150 reviews) in `e2e/iterators.e2e.test.ts` and
-`LIST_MAX_ITEMS` (200 apps) in `e2e/list.e2e.test.ts`. `LIST_MAX_ITEMS` is the
-hard ceiling `list` returns however large `num` gets, measured identical at
-`num` 200, 250 and 500 on 2026-08-26, so the assertion is exact and moves only
-when Google moves the cap. Re-measure the page directly before changing one.
-
-Every other page size the suite needs is read live rather than pinned, because
-a page size that is asserted as a constant fails the day Google resizes a page
-that the parser still reads correctly. Measured on 2026-09-10, for reference
-only: the numeric developer first page serves 10 apps and a token, the similar
-cluster's first page serves 50 apps and a token, and an English search first
-page served 30 results for "geography quiz" and 20 for "panda", identical
-across four consecutive calls each.
-
-The exact counts `e2e/list.e2e.test.ts` asserts are the one place a fixed
-number still sits against a Google-served set, and they stay because a top
-chart is a ranking window over a huge pool rather than one publisher's shelf.
-Measured at `num` 250 on 2026-09-10, every chart the suite touches filled to
-the 200 item cap: TOP_FREE and TOP_PAID for GAME, TOP_PAID for APPLICATION,
-GROSSING, age filtered FAMILY, and SOCIAL. Only GAME_TRIVIA ran shallower at
-162, and the suite asks it for five. Re-measure with the same probe before
-raising any `num` in that file.
+No page size or chart depth is pinned as a constant, because a size that is
+asserted fails the day Google resizes a page that the parser still reads
+correctly. Every size the suite needs is read live. Measured for reference only:
+on 2026-09-10 the numeric developer first page served 10 apps and a token, the
+similar cluster's first page 50 apps and a token, an English search first page
+30 results for "geography quiz" and 20 for "panda", and a reviews page 150
+reviews. On 2026-09-17 TOP_FREE APPLICATION served 199 apps at `num` 250 and
+500, GAME_TRIVIA 200, and every chart honoured a smaller `num` exactly.
 
 A tripwire failure means Google changed the serving regime, not that the code
-broke. The count assertions in the surrounding suites rely on the premises these
-tests pin, so re-port the affected contract before touching any threshold.
+broke. Re-port the affected contract before touching the assertion.
 
 Two of the three tripwires live in `e2e/search.e2e.test.ts` and fail for
 unrelated reasons. The continuation token one is answered by the procedure

@@ -1,11 +1,11 @@
 import { expect } from 'vitest';
-import type { App, AppItem, Review } from '../src/index.js';
+import type { App, AppItem, Review, ReviewsResult } from '../src/index.js';
 
 const PLAY_ORIGIN = 'https://play.google.com';
 const HTTPS_PROTOCOL = 'https:';
 const MAX_SCORE = 5;
 const SCORE_TEXT_ROUNDING_TOLERANCE = 0.051;
-const HISTOGRAM_LAG_RATIO = 0.01;
+const HISTOGRAM_LAG_RATIO = 0.1;
 const HISTOGRAM_LAG_FLOOR = 10;
 const ONE_DECIMAL_SCORE_TEXT = /^\d+[.,]\d+$/;
 const ASCII_DIGIT = /[0-9]/;
@@ -113,9 +113,25 @@ export function expectAppItemsContract(items: readonly AppItem[], label: string)
   ).toBe(items.length);
 }
 
+export function expectRequestedCountContract(count: number, num: number, label: string): void {
+  expect(count, `${label}: a live anchor must serve at least one item`).toBeGreaterThan(0);
+  expect(
+    count,
+    `${label}: a result must never exceed the ${num.toString()} items requested`,
+  ).toBeLessThanOrEqual(num);
+}
+
 export interface ContinuationAnchor {
   firstPageCount: number;
   token: string | undefined;
+}
+
+export function reviewsAnchor(page: ReviewsResult, label: string): ContinuationAnchor {
+  expect(
+    page.data.length,
+    `${label}: the reviews first page serves no reviews at all`,
+  ).toBeGreaterThan(0);
+  return { firstPageCount: page.data.length, token: page.nextPaginationToken ?? undefined };
 }
 
 export function expectContinuationContract(

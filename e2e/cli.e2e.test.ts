@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { category } from '../src/index.js';
+import { expectRequestedCountContract } from './contracts.js';
 import { liveDescribe } from './helpers.js';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -79,8 +81,7 @@ liveDescribe('cli', () => {
     const parsed: unknown = JSON.parse(stdout);
     expect(Array.isArray(parsed)).toBe(true);
     const results = parsed as { appId?: string }[];
-    expect(results.length).toBeGreaterThan(0);
-    expect(results.length).toBeLessThanOrEqual(3);
+    expectRequestedCountContract(results.length, 3, 'cli search');
     for (const result of results) {
       expect(typeof result.appId).toBe('string');
     }
@@ -111,7 +112,7 @@ liveDescribe('cli commands against live google play', () => {
     expect(entries[1]?.appId).toBe(MISSING_ID);
   });
 
-  it('list returns the requested number of free games', async () => {
+  it('list returns free games within the requested count', async () => {
     const parsed = await runCliJson([
       'list',
       '--collection',
@@ -122,7 +123,7 @@ liveDescribe('cli commands against live google play', () => {
       '5',
     ]);
     const items = parsed as { appId: string; free: boolean; price: number }[];
-    expect(items).toHaveLength(5);
+    expectRequestedCountContract(items.length, 5, 'cli list');
     for (const item of items) {
       expect(item.appId.length).toBeGreaterThan(0);
       expect(item.free).toBe(true);
@@ -153,10 +154,10 @@ liveDescribe('cli commands against live google play', () => {
     expect(stderr.toLowerCase()).toContain('not found');
   });
 
-  it('reviews accumulates exactly --num reviews with valid scores', async () => {
+  it('reviews respects --num with valid scores', async () => {
     const parsed = await runCliJson(['reviews', TRANSLATE_ID, '--num', '5', '--sort', 'rating']);
     const result = parsed as { data: { id: string; score: number }[] };
-    expect(result.data).toHaveLength(5);
+    expectRequestedCountContract(result.data.length, 5, 'cli reviews');
     for (const review of result.data) {
       expect(review.id.length).toBeGreaterThan(0);
       expect(review.score).toBeGreaterThanOrEqual(1);
@@ -185,7 +186,7 @@ liveDescribe('cli commands against live google play', () => {
   it('permissions --short prints plain permission strings', async () => {
     const parsed = await runCliJson(['permissions', TRANSLATE_ID, '--short']);
     const names = parsed as string[];
-    expect(names.length).toBeGreaterThan(3);
+    expect(names.length).toBeGreaterThan(0);
     for (const name of names) {
       expect(typeof name).toBe('string');
       expect(name.length).toBeGreaterThan(0);
@@ -220,15 +221,10 @@ liveDescribe('cli commands against live google play', () => {
     expect(report).not.toHaveProperty('privacyPolicyUrl');
   });
 
-  it('categories prints the taxonomy including GAME and APPLICATION', async () => {
+  it('categories prints exactly the category taxonomy constant', async () => {
     const parsed = await runCliJson(['categories']);
-    const ids = parsed as string[];
-    expect(ids.length).toBeGreaterThan(30);
-    expect(ids).toContain('GAME');
-    expect(ids).toContain('APPLICATION');
-    for (const id of ids) {
-      expect(id).toMatch(/^[A-Z_0-9]+$/);
-    }
+
+    expect(parsed).toEqual(Object.values(category));
   });
 
   it('availability reports the canonical app available in us and pl', async () => {
@@ -259,7 +255,7 @@ liveDescribe('cli commands against live google play', () => {
   it('search --full-detail returns results carrying full app fields', async () => {
     const parsed = await runCliJson(['search', 'panda', '--num', '1', '--full-detail']);
     const results = parsed as { appId: string; description?: string }[];
-    expect(results).toHaveLength(1);
+    expectRequestedCountContract(results.length, 1, 'cli full detail search');
     expect(results[0]?.appId.length).toBeGreaterThan(0);
     expect(results[0]?.description?.length).toBeGreaterThan(0);
   });

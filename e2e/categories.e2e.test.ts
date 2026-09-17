@@ -1,18 +1,12 @@
 import { expect, it } from 'vitest';
-import { categories, type ListItem } from '../src/index.js';
+import { categories, category, type ListItem } from '../src/index.js';
 import { liveClient, liveDescribe } from './helpers.js';
 
 liveDescribe('categories live contract', () => {
-  it('returns more than thirty uppercase categories including GAME and APPLICATION', async () => {
+  it('returns exactly the category taxonomy constant', async () => {
     const result = await categories();
 
-    expect(result.length).toBeGreaterThan(30);
-    expect(result).toContain('GAME');
-    expect(result).toContain('SOCIAL');
-    expect(result).toContain('APPLICATION');
-    for (const id of result) {
-      expect(id).toMatch(/^[A-Z_]+$/);
-    }
+    expect(result).toEqual(Object.values(category));
   });
 
   it('returns codes that resolve to real Google Play category listings', async () => {
