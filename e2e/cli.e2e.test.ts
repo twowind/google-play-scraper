@@ -80,8 +80,7 @@ liveDescribe('cli', () => {
     const parsed: unknown = JSON.parse(stdout);
     expect(Array.isArray(parsed)).toBe(true);
     const results = parsed as { appId?: string }[];
-    expect(results.length).toBeGreaterThan(0);
-    expect(results.length).toBeLessThanOrEqual(3);
+    expectRequestedCountContract(results.length, 3, 'cli search');
     for (const result of results) {
       expect(typeof result.appId).toBe('string');
     }
@@ -260,7 +259,7 @@ liveDescribe('cli commands against live google play', () => {
   it('search --full-detail returns results carrying full app fields', async () => {
     const parsed = await runCliJson(['search', 'panda', '--num', '1', '--full-detail']);
     const results = parsed as { appId: string; description?: string }[];
-    expect(results).toHaveLength(1);
+    expectRequestedCountContract(results.length, 1, 'cli full detail search');
     expect(results[0]?.appId.length).toBeGreaterThan(0);
     expect(results[0]?.description?.length).toBeGreaterThan(0);
   });

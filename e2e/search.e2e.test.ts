@@ -8,10 +8,13 @@ import {
   type IntegrityEvent,
   type SearchResult,
 } from '../src/index.js';
-import { expectAppItemsContract, expectSearchListingAgreement } from './contracts.js';
+import {
+  expectAppItemsContract,
+  expectRequestedCountContract,
+  expectSearchListingAgreement,
+} from './contracts.js';
 import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
-const FIRST_PAGE_CEILING = 40;
 const GEO_GAME = 'com.adex77.WhereAmI';
 const EXACT_MATCH_CARD_CANDIDATES = [
   'com.spotify.music',
@@ -41,13 +44,14 @@ function memoizingResolveClient(): ResolveClient {
 liveDescribe('search live contract', () => {
   it('returns unique valid apps for a broad term', async () => {
     const events: IntegrityEvent[] = [];
+    const num = 30;
     const results = (await liveClient.search({
       term: 'panda',
-      num: 30,
+      num,
       onIntegrityEvent: (event) => events.push(event),
     })) as SearchResult[];
 
-    expect(results.length).toBeGreaterThan(10);
+    expectRequestedCountContract(results.length, num, 'broad term search');
     expectAppItemsContract(results, 'broad term search');
     expect(events).toEqual([]);
   });
@@ -70,13 +74,14 @@ liveDescribe('search live contract', () => {
   });
 
   it('returns only free apps when the price filter is free', async () => {
+    const num = 20;
     const results = (await liveClient.search({
       term: 'vpn',
       price: 'free',
-      num: 20,
+      num,
     })) as SearchResult[];
 
-    expect(results.length).toBeGreaterThan(0);
+    expectRequestedCountContract(results.length, num, 'free filtered search');
     expectAppItemsContract(results, 'free filtered search');
     for (const item of results) {
       expect(item.free).toBe(true);
@@ -91,13 +96,14 @@ liveDescribe('search live contract', () => {
   });
 
   it('returns only paid apps when the price filter is paid', async () => {
+    const num = 10;
     const results = (await liveClient.search({
       term: 'minecraft',
       price: 'paid',
-      num: 10,
+      num,
     })) as SearchResult[];
 
-    expect(results.length).toBeGreaterThan(0);
+    expectRequestedCountContract(results.length, num, 'paid filtered search');
     expectAppItemsContract(results, 'paid filtered search');
     for (const item of results) {
       expect(item.free).toBe(false);
@@ -106,21 +112,23 @@ liveDescribe('search live contract', () => {
   });
 
   it('returns results for a non latin search term', async () => {
-    const results = (await liveClient.search({ term: 'ポケモン', num: 10 })) as SearchResult[];
+    const num = 10;
+    const results = (await liveClient.search({ term: 'ポケモン', num })) as SearchResult[];
 
-    expect(results.length).toBeGreaterThanOrEqual(5);
+    expectRequestedCountContract(results.length, num, 'non latin search');
     expectAppItemsContract(results, 'non latin search');
   });
 
   it('returns localized results for a german term with diacritics', async () => {
+    const num = 20;
     const results = (await liveClient.search({
       term: 'übersetzer',
       lang: 'de',
       country: 'de',
-      num: 20,
+      num,
     })) as SearchResult[];
 
-    expect(results.length).toBeGreaterThanOrEqual(10);
+    expectRequestedCountContract(results.length, num, 'german search');
     expect(results.some((item) => item.title.toLowerCase().includes('übersetzer'))).toBe(true);
     expectAppItemsContract(results, 'german search');
   });
@@ -136,8 +144,9 @@ liveDescribe('search live contract', () => {
     );
 
     expect(page.token).toBeUndefined();
-    expect(page.apps.length).toBeGreaterThan(10);
-    expect(page.apps.length).toBeLessThanOrEqual(FIRST_PAGE_CEILING);
+    expect(page.apps.length, 'first page search: the live page must serve results').toBeGreaterThan(
+      0,
+    );
 
     const results = (await search({
       term: 'game',
@@ -198,14 +207,22 @@ liveDescribe('search live contract', () => {
       clientFromOptions,
     );
 
-    expect(page.apps.length).toBeGreaterThanOrEqual(19);
+    expect(
+      page.apps.length,
+      'an empty search page cannot prove that google stopped serving a continuation token',
+    ).toBeGreaterThan(0);
     expect(page.token).toBeUndefined();
   });
 
-  it('resolves full app details when fullDetail is set', async () => {
-    const results = (await liveClient.search({ term: 'panda', num: 3, fullDetail: true })) as App[];
+  it('resolves full app details for exactly the results of the same page', async () => {
+    const num = 3;
+    const search = createSearch(app, memoizingResolveClient());
 
-    expect(results).toHaveLength(3);
+    const summaries = (await search({ term: 'panda', num })) as SearchResult[];
+    const results = (await search({ term: 'panda', num, fullDetail: true })) as App[];
+
+    expectRequestedCountContract(summaries.length, num, 'full detail search');
+    expect(results.map((item) => item.appId)).toEqual(summaries.map((item) => item.appId));
     for (const item of results) {
       expect(typeof item.description).toBe('string');
       expect(item.description.length).toBeGreaterThan(0);

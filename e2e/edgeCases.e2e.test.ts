@@ -4,6 +4,7 @@ import type { App, IntegrityEvent, ListItem, SearchResult, SimilarApp } from '..
 import {
   expectAppItemsContract,
   expectListingContract,
+  expectRequestedCountContract,
   expectReviewsContract,
   expectSearchListingAgreement,
 } from './contracts.js';
@@ -153,9 +154,10 @@ liveDescribe('sparse listings live contract', () => {
   });
 
   it('keeps rating fields consistent across a mixed search page', async ({ annotate }) => {
-    const results = (await liveClient.search({ term: 'hobby tracker', num: 30 })) as SearchResult[];
+    const num = 30;
+    const results = (await liveClient.search({ term: 'hobby tracker', num })) as SearchResult[];
 
-    expect(results.length).toBeGreaterThan(10);
+    expectRequestedCountContract(results.length, num, 'hobby tracker search');
     expectAppItemsContract(results, 'hobby tracker search');
 
     const unrated = results.filter((item) => item.score === undefined).length;
