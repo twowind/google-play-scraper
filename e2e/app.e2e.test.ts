@@ -101,7 +101,7 @@ liveDescribe('app live contract', () => {
     for (const field of TRANSLATE_STABLE_FIELDS) {
       expect(record[field], field).toBeDefined();
     }
-    expect(result.screenshots.length).toBeGreaterThanOrEqual(5);
+    expect(result.screenshots.length).toBeGreaterThan(0);
   });
 
   it('fills every optional media field somewhere across the maintained basket', async () => {

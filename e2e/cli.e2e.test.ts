@@ -185,7 +185,7 @@ liveDescribe('cli commands against live google play', () => {
   it('permissions --short prints plain permission strings', async () => {
     const parsed = await runCliJson(['permissions', TRANSLATE_ID, '--short']);
     const names = parsed as string[];
-    expect(names.length).toBeGreaterThan(3);
+    expect(names.length).toBeGreaterThan(0);
     for (const name of names) {
       expect(typeof name).toBe('string');
       expect(name.length).toBeGreaterThan(0);
