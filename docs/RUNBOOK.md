@@ -238,10 +238,18 @@ A consequence worth stating plainly: `free` false is not the claim "this app
 costs money", because an offerless listing also reads as `free` false with
 `price` 0. Read `currency` first when deciding which state a listing is in.
 
-Three thresholds in the suite are measured, not guessed, all on 2026-08-26:
+Three thresholds in the suite are measured, not guessed, on 2026-08-26 unless
+a bullet says otherwise:
 
-- The histogram tracks the rating count to within `max(10, 1% of ratings)`,
-  measured across listings from 31 to 242 million ratings.
+- The histogram tracks the rating count to within `max(10, 10% of ratings)`.
+  The histogram total always sat at or below the rating count, and the gap
+  ratio grows as listings shrink: measured on 2026-09-17 across 35 listings it
+  was under 0.01% above a million ratings, 1.07% at 3556, 1.63% at 7723 and
+  5.1% at 39, where the floor of ten takes over. The earlier 1% figure came
+  from flagship listings only. Ten percent is six times the worst measured
+  drift and still a third of the smallest number a drifted `ratings` path could
+  read instead, the review count, which never exceeds about thirty percent of
+  the ratings on any sampled listing.
 - `scoreText` is the score rounded to one decimal, so it agrees to within 0.051
   once the locale decimal comma is normalized.
 - `DATA_RICH_COLLECTED_FLOOR` in `e2e/datasafety.e2e.test.ts` is 10 against 37
