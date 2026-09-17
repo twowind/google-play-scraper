@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { sort, type IntegrityEvent } from '../src/index.js';
-import { expectContinuationContract, expectReviewsContract } from './contracts.js';
-import { expectFieldCoverage, fetchReviewsFirstPage, liveClient, liveDescribe } from './helpers.js';
+import { expectContinuationContract, expectReviewsContract, reviewsAnchor } from './contracts.js';
+import { expectFieldCoverage, liveClient, liveDescribe } from './helpers.js';
 
 const TRANSLATE = 'com.google.android.apps.translate';
 const GEO_GAME = 'com.adex77.WhereAmI';
@@ -19,7 +19,10 @@ liveDescribe('reviews live contract', () => {
 
   it('accumulates exactly one review past the live first page with unique ids', async () => {
     const events: IntegrityEvent[] = [];
-    const anchor = await fetchReviewsFirstPage(TRANSLATE);
+    const anchor = reviewsAnchor(
+      await liveClient.reviews({ appId: TRANSLATE, paginate: true }),
+      'accumulated reviews',
+    );
     const num = anchor.firstPageCount + 1;
     const result = await liveClient.reviews({
       appId: TRANSLATE,

@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import type { App, AppItem, Review } from '../src/index.js';
+import type { App, AppItem, Review, ReviewsResult } from '../src/index.js';
 
 const PLAY_ORIGIN = 'https://play.google.com';
 const HTTPS_PROTOCOL = 'https:';
@@ -124,6 +124,14 @@ export function expectRequestedCountContract(count: number, num: number, label: 
 export interface ContinuationAnchor {
   firstPageCount: number;
   token: string | undefined;
+}
+
+export function reviewsAnchor(page: ReviewsResult, label: string): ContinuationAnchor {
+  expect(
+    page.data.length,
+    `${label}: the reviews first page serves no reviews at all`,
+  ).toBeGreaterThan(0);
+  return { firstPageCount: page.data.length, token: page.nextPaginationToken ?? undefined };
 }
 
 export function expectContinuationContract(

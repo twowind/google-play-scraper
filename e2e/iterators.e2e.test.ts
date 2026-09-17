@@ -11,8 +11,9 @@ import {
   expectContinuationContract,
   expectReviewContract,
   expectReviewsContract,
+  reviewsAnchor,
 } from './contracts.js';
-import { fetchReviewsFirstPage, liveClient, liveDescribe } from './helpers.js';
+import { liveClient, liveDescribe } from './helpers.js';
 
 const WHATSAPP = 'com.whatsapp';
 const GEO_GAME = 'com.adex77.WhereAmI';
@@ -36,7 +37,10 @@ const REVIEWS_ALL_CEILING = 5000;
 
 liveDescribe('iterators live contract', () => {
   it('streams reviews across the first page boundary', async () => {
-    const anchor = await fetchReviewsFirstPage(WHATSAPP);
+    const anchor = reviewsAnchor(
+      await liveClient.reviews({ appId: WHATSAPP, paginate: true }),
+      'reviews stream',
+    );
     const limit = anchor.firstPageCount + 1;
     const collected: string[] = [];
     const events: IntegrityEvent[] = [];
@@ -128,7 +132,10 @@ liveDescribe('iterators live contract', () => {
   });
 
   it('collects exactly maxReviews reviews one short of the live first page', async () => {
-    const { firstPageCount } = await fetchReviewsFirstPage(WHATSAPP);
+    const { firstPageCount } = reviewsAnchor(
+      await liveClient.reviews({ appId: WHATSAPP, paginate: true }),
+      'reviewsAll page',
+    );
     expect(
       firstPageCount,
       'the reviews first page must carry more than one review to stop inside it',

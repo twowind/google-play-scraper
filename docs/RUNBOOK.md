@@ -186,10 +186,10 @@ chart holds 200 apps". None of them is allowed, whatever the measured margin.
 
 "A continuation was followed" is expressed against the first page of the same
 surface, never against a constant. Fetch that page with
-`fetchDeveloperFirstPage`, `fetchSearchFirstPage`, `fetchSimilarFirstPage` or
-`fetchReviewsFirstPage`, then hand it to `expectContinuationContract`, which
-requires the aggregate to stay within the requested limit and to exceed the page
-it continued from. A probe whose first page stops carrying a token fails with a
+`fetchDeveloperFirstPage`, `fetchSearchFirstPage` or `fetchSimilarFirstPage`, or
+read a `paginate: true` reviews page through `reviewsAnchor`, then hand it to
+`expectContinuationContract`, which requires the aggregate to stay within the
+requested limit and to exceed the page it continued from. A probe whose first page stops carrying a token fails with a
 message naming the re-anchor task, because that is a serving regime change and
 not a parse break.
 
