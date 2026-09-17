@@ -113,6 +113,14 @@ export function expectAppItemsContract(items: readonly AppItem[], label: string)
   ).toBe(items.length);
 }
 
+export function expectRequestedCountContract(count: number, num: number, label: string): void {
+  expect(count, `${label}: a live anchor must serve at least one item`).toBeGreaterThan(0);
+  expect(
+    count,
+    `${label}: a result must never exceed the ${num.toString()} items requested`,
+  ).toBeLessThanOrEqual(num);
+}
+
 export interface ContinuationAnchor {
   firstPageCount: number;
   token: string | undefined;
