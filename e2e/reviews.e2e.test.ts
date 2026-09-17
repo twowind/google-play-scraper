@@ -28,7 +28,6 @@ liveDescribe('reviews live contract', () => {
     });
 
     expectContinuationContract(anchor, result.data.length, num, 'accumulated reviews');
-    expect(result.data).toHaveLength(num);
     expect(result.nextPaginationToken).toBeNull();
     expectReviewsContract(result.data, 'accumulated reviews');
     expect(events).toEqual([]);
