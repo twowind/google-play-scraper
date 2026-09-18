@@ -84,7 +84,7 @@
     "docs:api": "typedoc",
     "fixtures:update": "tsx scripts/update-fixtures.ts",
     "example": "tsx examples/all-methods.ts",
-    "prepare": "husky",
+    "prepare": "npm run build",
     "prepublishOnly": "pnpm build"
   },
   "lint-staged": {
