@@ -1,5 +1,6 @@
 import * as z from 'zod/mini';
 import { BASE_URL } from '../../constants.js';
+import { onFailedHtml } from '../../core/failedHtml.js';
 import { clientFromOptions, type ResolveClient } from '../../core/http.js';
 import { baseOptionsSchema, parseOptions } from '../../core/options.js';
 import { parseScriptData } from '../../core/scriptData.js';
@@ -35,27 +36,32 @@ export function createApp(resolveClient: ResolveClient = clientFromOptions) {
 
     const client = resolveClient(parsed);
     const html = await client.request({ url });
-    const data = parseScriptData(html, appScriptDataSelection);
-    const details = resolveScriptRoot(
-      data,
-      appDetailsRootSpec,
-      'app details',
-      parsed.onIntegrityEvent,
-    );
-    const comments = resolveScriptRoot(
-      data,
-      appCommentsRootSpec,
-      'app comments',
-      parsed.onIntegrityEvent,
-    );
-    const extracted = extract(details.root, appSpecs, 'app');
+    try {
+      const data = parseScriptData(html, appScriptDataSelection);
+      const details = resolveScriptRoot(
+        data,
+        appDetailsRootSpec,
+        'app details',
+        parsed.onIntegrityEvent,
+      );
+      const comments = resolveScriptRoot(
+        data,
+        appCommentsRootSpec,
+        'app comments',
+        parsed.onIntegrityEvent,
+      );
+      const extracted = extract(details.root, appSpecs, 'app');
 
-    return appSchema.parse({
-      ...extracted,
-      appId: parsed.appId,
-      url,
-      comments: extractComments(comments.root),
-    });
+      return appSchema.parse({
+        ...extracted,
+        appId: parsed.appId,
+        url,
+        comments: extractComments(comments.root),
+      });
+    } catch (error) {
+      onFailedHtml(html);
+      throw error;
+    }
   };
 }
 
